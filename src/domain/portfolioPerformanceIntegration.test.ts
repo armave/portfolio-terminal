@@ -181,11 +181,25 @@ describe('buildPortfolioPerformanceReport', () => {
         effectiveAt: start + DAY / 2, recordedAt: start + DAY / 2,
         currency: 'USD', externalCashFlowAmount: 100, grossAmount: 100,
         externalReferenceId: 'cashflow-1'
+      }, {
+        id: 'manual-interest-1', schemaVersion: 1, type: 'interest.income',
+        cashflowCategory: 'interest_income',
+        actor: { type: 'user' }, source: 'manual-cash-activity',
+        effectiveAt: start + DAY / 4, recordedAt: start + DAY / 4,
+        currency: 'USD', grossAmount: 0.5, cashDelta: 0.5
       }],
       cashflows: [{
         id: 'freedom-commission-1', date: new Date(start + DAY / 2).toISOString(),
         type: 'Commission', amount: -2, currency: 'USD',
         description: 'Broker commission', raw: { operation_type: 'Commission' }
+      }, {
+        id: 'freedom-commission-refund-1', date: new Date(start + DAY / 2 + 1000).toISOString(),
+        type: 'Commission', amount: 0.5, currency: 'USD',
+        description: 'Commission refund', raw: { operation_type: 'Commission refund' }
+      }, {
+        id: 'freedom-interest-1', date: new Date(start + DAY / 3).toISOString(),
+        type: 'Interest income', amount: 1.5, currency: 'USD',
+        description: 'Credited interest', raw: { operation_type: 'Interest income' }
       }]
     } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>;
 
@@ -198,7 +212,8 @@ describe('buildPortfolioPerformanceReport', () => {
     }
     expect(report.incomeCosts?.status).toBe('available');
     if (report.incomeCosts && report.incomeCosts.status !== 'unavailable') {
-      expect(report.incomeCosts.value.commissions).toBe(2);
+      expect(report.incomeCosts.value.commissions).toBe(1.5);
+      expect(report.incomeCosts.value.interestIncome).toBe(2);
     }
     expect(report.latestAttribution?.status).toBe('available');
     if (report.latestAttribution && report.latestAttribution.status !== 'unavailable') {

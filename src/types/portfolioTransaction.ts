@@ -1,5 +1,10 @@
 export const PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION = 1 as const;
 
+export type CashflowCategory =
+  | 'deposit' | 'withdrawal' | 'dividend' | 'interest_income'
+  | 'commission' | 'fee' | 'tax' | 'margin_interest'
+  | 'transfer' | 'adjustment' | 'correction' | 'corporate_action' | 'unclassified';
+
 export type PortfolioTransactionEventType =
   | 'trade.buy'
   | 'trade.sell'
@@ -16,6 +21,7 @@ export type PortfolioTransactionEventType =
   | 'cash.adjustment'
   | 'cash.transfer'
   | 'dividend'
+  | 'interest.income'
   | 'fee'
   | 'margin.adjustment'
   | 'margin.interest'
@@ -91,6 +97,8 @@ export interface PortfolioTransactionEvent {
   id: string;
   schemaVersion: typeof PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION;
   type: PortfolioTransactionEventType;
+  /** Shared broker/manual classification; raw source descriptions remain preserved separately. */
+  cashflowCategory?: CashflowCategory;
   actor: PortfolioTransactionActor;
   /** Origin of the command, not the storage mechanism. */
   source: string;
@@ -151,6 +159,7 @@ export interface PortfolioTransactionEvent {
 
 export interface PortfolioTransactionDraft {
   type: PortfolioTransactionEventType;
+  cashflowCategory?: CashflowCategory;
   effectiveAt: number;
   lotId?: string;
   acquisitionDate?: string;

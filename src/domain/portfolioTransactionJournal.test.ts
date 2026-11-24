@@ -1146,3 +1146,18 @@ describe('transaction journal replay and parity', () => {
     }).matches).toBe(true);
   });
 });
+
+
+describe('cashflow audit classification', () => {
+  it('distinguishes credited interest from margin interest without posting broker amounts', () => {
+    const events = appendBrokerHistoryAuditEvents([], [], [
+      { id: 'credited-1', date: '2026-11-12', type: 'Interest income', amount: 1.25, currency: 'USD' },
+      { id: 'margin-1', date: '2026-11-12', type: 'Margin Fee', amount: -2.5, currency: 'USD' }
+    ], Date.parse('2026-11-13T09:00:00.000Z'));
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ type: 'interest.income', cashflowCategory: 'interest_income', externalCashFlowAmount: 1.25 });
+    expect(events[1]).toMatchObject({ type: 'margin.interest', cashflowCategory: 'margin_interest', externalCashFlowAmount: -2.5 });
+    expect(events.every(event => event.actor.type === 'broker' && event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
+    expect(inspectPortfolioTransactionJournalReplayCoverage(events).evidenceOnlyCount).toBe(2);
+  });
+});

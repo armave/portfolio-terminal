@@ -1,6 +1,7 @@
 import type { BrokerCashflow, BrokerExecution } from '../types/broker';
 import type { ClosedTrade } from '../types/portfolio';
-import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
+import type { PortfolioTransactionEvent, CashflowCategory } from '../types/portfolioTransaction';
+import { classifyCashflow, normalizeClassifiedCashflowAmount } from './cashflowClassification';
 
 export type ReconciliationFeedStatus = 'complete' | 'partial' | 'unavailable';
 
@@ -119,6 +120,8 @@ interface NormalizedLegacyClosedSale {
 interface NormalizedCashflow {
   id: string;
   type: PortfolioTransactionEvent['type'];
+  category: CashflowCategory;
+  identityQuality: 'provider' | 'fallback';
   amount: number;
   currency: string;
   at: number | null;
@@ -128,7 +131,7 @@ const EXECUTION_EVENT_TYPES = new Set<PortfolioTransactionEvent['type']>([
   'trade.buy', 'trade.sell', 'cash-holding.buy', 'cash-holding.sell'
 ]);
 const CASHFLOW_EVENT_TYPES = new Set<PortfolioTransactionEvent['type']>([
-  'dividend', 'fee', 'margin.interest', 'cash.deposit', 'cash.withdrawal',
+  'dividend', 'interest.income', 'fee', 'margin.interest', 'cash.deposit', 'cash.withdrawal',
   'cash.transfer', 'cash.adjustment'
 ]);
 
@@ -220,39 +223,17 @@ function normalizeLegacyClosedSale(row: ClosedTrade, index: number): NormalizedL
 function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
   const amount = number(row.amount);
   if (amount === null) return null;
-  const description = `${text(row.type)} ${text(row.description)}`.toLowerCase();
-  // Do not equate a margin-balance adjustment with an interest charge.
-  const isAmbiguousMarginAdjustment = /\bmargin\b.{0,32}\badjustment\b|\badjustment\b.{0,32}\bmargin\b/.test(description);
-  const isExplicitMarginInterest = /\binterest\b|\bfinancing\b|\bborrow fee\b|\bmargin[\s-]+fee\b/.test(description);
-  const isAmbiguousMarginLabel = /\bmargin\b/.test(description) && !isExplicitMarginInterest;
-  const type: PortfolioTransactionEvent['type'] | null = /dividend|distribution|coupon/.test(description)
-    ? 'dividend'
-    : isAmbiguousMarginAdjustment || isAmbiguousMarginLabel
-      ? null
-      : isExplicitMarginInterest
-        ? 'margin.interest'
-      : /fee|commission|charge|tax/.test(description)
-        ? 'fee'
-        : /transfer/.test(description)
-          ? 'cash.transfer'
-          : /withdraw|debit/.test(description)
-            ? 'cash.withdrawal'
-            : /deposit|funding|credit/.test(description)
-              ? 'cash.deposit'
-              : /\badjustment\b|\bcorrection\b/.test(description)
-                ? 'cash.adjustment'
-                : null;
-  // A generic/unknown provider cashflow must not be guessed to be an account
-  // adjustment: that could falsely reconcile an unrelated operation with a
-  // manual balance adjustment in the app journal.
-  if (!type) return null;
-  // Some broker cashflow feeds encode withdrawals as positive magnitudes and
-  // rely on the operation type for direction. Normalize deposits/withdrawals
-  // to signed account movement before comparing them with the app journal.
-  const signedAmount = type === 'cash.deposit'
-    ? Math.abs(amount)
-    : type === 'cash.withdrawal' ? -Math.abs(amount) : amount;
-  return { id: text(row.id) || `anonymous:${JSON.stringify([row.date, type, signedAmount, row.currency])}`, type, amount: signedAmount, currency: currency(row.currency), at: timestamp(row.date) };
+  const classification = classifyCashflow({ type: row.type, description: row.description, raw: row.raw });
+  if (!classification.eventType) return null;
+  const classificationText = [row.type, row.description, ...Object.values(row.raw || {})].join(' ');
+  const signedAmount = normalizeClassifiedCashflowAmount(
+    classification.category, amount, classificationText
+  );
+  const id = text(row.id) || `anonymous:${JSON.stringify([row.date, row.type, signedAmount, row.currency])}`;
+  const identityQuality = row.identityQuality ??
+    (/^anonymous:/i.test(id) || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(id) ? 'fallback' : 'provider');
+  return { id, type: classification.eventType, category: classification.category, identityQuality,
+    amount: signedAmount, currency: currency(row.currency), at: timestamp(row.date) };
 }
 function eventAmount(event: PortfolioTransactionEvent): number | null {
   return number(event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
@@ -304,13 +285,14 @@ function sameExecutionObservation(left: NormalizedExecution, right: NormalizedEx
 
 function sameCashflowObservation(left: NormalizedCashflow, right: NormalizedCashflow): boolean {
   return left.type === right.type &&
+    left.category === right.category &&
     left.amount === right.amount &&
     left.currency === right.currency &&
     left.at === right.at;
 }
 
 const SIGNED_CASHFLOW_EVENT_TYPES = new Set<PortfolioTransactionEvent['type']>([
-  'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'cash.adjustment', 'dividend'
+  'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'cash.adjustment', 'dividend', 'interest.income'
 ]);
 
 function hasExplicitSignedCashflowAmount(event: PortfolioTransactionEvent): boolean {
@@ -1164,7 +1146,7 @@ export function reconcileBrokerActivity(
     const row = normalizeCashflow(raw);
     if (row) {
       normalizedCashflowRows.push(row);
-      if (/^anonymous:/i.test(row.id) || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id)) {
+      if (row.identityQuality === 'fallback' || /^anonymous:/i.test(row.id) || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id)) {
         sourceDataIncomplete = true;
         brokerCashflowAbsenceEvidenceComplete = false;
         warnings.push('One or more broker cashflows lack a provider-stable cashflow ID; matching is provisional.');
@@ -1375,6 +1357,7 @@ export function reconcileBrokerActivity(
       };
     }).filter(candidate =>
       candidate.event.type === broker.type &&
+      (!candidate.event.cashflowCategory || candidate.event.cashflowCategory === broker.category) &&
       hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&
@@ -1399,7 +1382,7 @@ export function reconcileBrokerActivity(
         timeDelta: Math.abs(event.effectiveAt - brokerAt)
       };
     }).filter(candidate =>
-      candidate.event.type !== broker.type &&
+      (candidate.event.type !== broker.type || (candidate.event.cashflowCategory && candidate.event.cashflowCategory !== broker.category)) &&
       hasSameKnownCurrency(broker.currency, candidate.event.currency) &&
       candidate.appAmount !== null &&
       Math.abs(Math.abs(candidate.appAmount) - Math.abs(broker.amount)) <= amountTolerance &&

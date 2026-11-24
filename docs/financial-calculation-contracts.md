@@ -379,3 +379,24 @@ Before changing a contract:
 - Include migration and rollback notes for persisted data changes.
 - Update this document and the roadmap issue/PR with the explicit accepted contract change.
 - Never label a mock result as authenticated broker or production verification.
+
+
+## 15. Cash Activity ledger and manual posting contract
+
+The Trades workspace includes an admin-only Cash Activity view. It presents normalized broker cashflow history beside app-owned journal events; it is a projection of the existing portfolio store, not a second cash ledger.
+
+- Broker cashflow rows remain source evidence. Their journal copies use the broker actor, retain the external source reference and signed external amount, and do not contain local cash or margin-debt deltas. Import or refresh never posts the broker amount into `cashCushion.freeCash` or `balance`.
+- The shared classifier is the only category boundary for broker import, cashflow reconciliation, performance income/cost summaries and the Cash Activity view. Credited interest is `interest.income`; margin financing is `margin.interest`; tax and commission retain separate categories even though both use the fee event type.
+- Ambiguous margin labels, margin-balance adjustments, dividend reinvestment and provider-specific unknown rows remain unclassified. They are not inferred to be deposits, fees or margin interest.
+- A row without a provider operation ID receives a deterministic fallback display identity and is marked provisional. Duplicate-looking rows in one provider response are retained separately. Fallback identities do not qualify as verified broker fee inputs or confirmed reconciliation matches.
+- Manual activity is recorded only through `PortfolioStore.postCashActivity`. The command commits the canonical state delta and its immutable journal event together through the existing persistence-before-publication boundary and uses a request fingerprint/idempotency key to suppress an identical retry.
+- Manual cash activity is USD-only because the canonical available-cash/debt fields are USD-denominated. No historical FX conversion or multi-currency cash subledger is implied. Other-currency broker rows remain visible but are excluded from the USD summaries.
+- Deposits, dividends and credited interest increase available cash. Withdrawals, fees, commissions, taxes and transfer-out reduce available cash; an outflow that would make available cash negative is rejected. Cash outflows never create margin debt implicitly.
+- Manual margin interest is an explicit debt-capitalization command: free cash is unchanged and signed debt becomes more negative. Its realized-charge delta follows the existing rollover rule: it is added to `realizedMarginCharged` only when there are no position tickers or invested cost basis is zero; otherwise it remains capitalized in debt for the open-position financing calculation. The journal records the explicit realized-charge delta, including zero.
+- `PortfolioState.positions` is unchanged by Cash Activity. Current cash is read from `cashCushion.freeCash`; margin debt is read from the absolute value of signed `balance`.
+- The income/cost summary is explanatory only. It includes normalized broker cashflows and app/system-owned income/cost journal events, skips broker journal copies to avoid duplicate counting, and is not added a second time to TWR/MWR. Deposits and withdrawals continue to be handled as external performance flows by the existing performance adapter.
+- Unknown amounts, currencies, dates and provisional source identities remain visible and do not enter verified USD totals. A missing value is not converted to zero.
+
+The tab and manual-entry form are rendered only for administrators in the current application. Guest accounts continue to use the server-filtered guest holdings/history paths and do not load the administrator Closed History record. The feature reuses the existing authenticated portfolio persistence path; it does not add a new broker writeback API or imply that imported broker evidence is an app-owned posting.
+
+The feature is code-complete on its delivery branch pending exact-head GitHub Actions and review. Do not treat it as production-verified until the associated PR checks and release process provide that evidence.

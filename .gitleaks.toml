@@ -1,0 +1,18 @@
+title = "Portfolio Terminal Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# This exact marker is a synthetic unit-test response, not an AWS credential.
+# Scope the exception to the two historic commits, one test file, and the exact
+# matching line so no other value, file, or commit is excluded from scanning.
+[[allowlists]]
+description = "Historical mock AWS key marker in tenant-key-service tests only."
+condition = "AND"
+commits = [
+  "c35df606dffb53d7bb981810f2cab44103d4d723",
+  "0cb629f74a7cf374a6825d88064e5b39e3708ece"
+]
+paths = ['''^tenant-key-service\.test\.js$''']
+regexTarget = "line"
+regexes = ['''ASIAEXAMPLEACCESSKEY''']

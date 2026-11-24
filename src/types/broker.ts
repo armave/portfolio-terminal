@@ -158,6 +158,8 @@ export interface BrokerCashflow {
   amount: number;
   currency?: string;
   description?: string;
+  /** Whether the provider supplied a stable unique identifier for this operation. */
+  identityQuality?: 'provider' | 'fallback';
   raw: Record<string, string>;
 }
 

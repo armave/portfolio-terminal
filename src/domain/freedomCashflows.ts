@@ -129,6 +129,7 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
   if (rows.length === 0) return [];
 
   const normalized: NormalizedFreedomCashflow[] = [];
+  const fallbackOccurrences = new Map<string, number>();
   for (const candidate of rows) {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
     const row = candidate as Record<string, unknown>;
@@ -169,13 +170,16 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
 
     const fallbackId = [date, type, amount.toFixed(8), currency, description].join("|").toLowerCase();
     const brokerId = stringifyRawValue(idValue).trim();
+    const occurrence = fallbackOccurrences.get(fallbackId) || 0;
+    fallbackOccurrences.set(fallbackId, occurrence + 1);
     normalized.push({
-      id: brokerId ? `freedom-${brokerId}` : `freedom-${fallbackId}`,
+      id: brokerId ? `freedom-${brokerId}` : `freedom-${fallbackId}${occurrence ? `#duplicate-${occurrence + 1}` : ''}`,
       date,
       type,
       amount,
       currency: currency || undefined,
       description: description || undefined,
+      identityQuality: brokerId ? 'provider' : 'fallback',
       raw
     });
   }
@@ -190,8 +194,9 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
  * True only for cashflow rows received from the Freedom API. Older locally
  * saved file-import rows are retained for history but are not fee inputs.
  */
-export function isFreedomCashflowRow(row: Pick<NormalizedFreedomCashflow, "id">): boolean {
-  return row.id.startsWith("freedom-");
+export function isFreedomCashflowRow(row: Pick<NormalizedFreedomCashflow, "id"> & { identityQuality?: 'provider' | 'fallback' }): boolean {
+  return row.id.startsWith("freedom-") && row.identityQuality !== 'fallback' &&
+    !/^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id);
 }
 
 /**
@@ -223,6 +228,9 @@ export function normalizeSavedFreedomCashflows(values: readonly unknown[]): Norm
       amount,
       ...(currency ? { currency } : {}),
       ...(description ? { description } : {}),
+      ...(row.identityQuality === 'provider' || row.identityQuality === 'fallback'
+        ? { identityQuality: row.identityQuality }
+        : /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(id) ? { identityQuality: 'fallback' as const } : {}),
       raw
     });
   }

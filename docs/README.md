@@ -14,6 +14,7 @@ This directory contains maintained product and engineering references, current o
 
 - [Account sessions](account-sessions.md) — server-enforced session expiry, per-account session cap, and revocation behavior.
 - [Portfolio planning settings](portfolio-settings.md) — admin-managed app guardrails, defaults, scope, and validation boundaries.
+- [Cash Activity ledger](cash-activity-ledger.md) — shared broker/manual cashflow classification, evidence-only imports, admin-owned USD postings, and reconciliation/performance rules.
 - [Role-based portfolio synchronization](ROLE_SYNC_POLICY.md) — role-specific refresh policy and data visibility.
 - [Settings information architecture and safety UX](settings-ux.md) — role-aware navigation, synchronization-status semantics, backup/recovery separation, and financial-setting presentation.
 - [Session-scoped browser storage](session-scoped-browser-storage.md) — local storage namespaces and authenticated workspace transitions.
@@ -34,7 +35,6 @@ This directory contains maintained product and engineering references, current o
 - [Picomatch ReDoS backport](ci/picomatch-redos-backport.md) — temporary, source-attributed v2/v4 backports, dependency resolution, regression evidence and retirement conditions.
 - [Tenant KMS operations](tenant-kms-operations.md) — AWS KMS / IAM Roles Anywhere setup, Worker secret configuration, key provisioning and operational gates.
 
-- [Tenant KMS operations](tenant-kms-operations.md) — AWS KMS / IAM Roles Anywhere setup, Worker secret configuration, key provisioning and operational gates.
 - [PT-16 tenant-key lifecycle ADR](pt16-tenant-key-lifecycle-adr.md) — proposed DEK/KEK ownership, versioned envelopes, unwrap boundary and rotation/recovery state machine.
 - [PT-16 data lifecycle inventory](pt16-data-lifecycle-inventory.md) — observed financial-data storage surfaces and proposed retention/export/deletion controls.
 - [PT-16 browser security review](pt16-browser-security-review.md) — GitHub Pages CSP boundary, XSS surfaces and credential-exposure test plan.
