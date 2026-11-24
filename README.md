@@ -240,7 +240,7 @@ npm run build
 
 ```
 
-Deployment to GitHub Pages is the final job in `.github/workflows/ci.yml` for pushes and manual runs on `main`. CI validates the production build and browser journeys, stamps the artifact with commit/run provenance, and uploads it; the deployment job downloads and verifies that exact artifact, then waits for successful security validation of the same `main` commit before publishing and checking that the site responds. It does not rebuild a separate production artifact.
+Deployment to GitHub Pages uses two final jobs in `.github/workflows/ci.yml` for pushes and manual runs on `main`. The staging job downloads and verifies the production build artifact from that exact CI run, checks its commit/run provenance, waits for successful security validation of the same `main` commit, and uploads the verified files as the standard `github-pages` artifact. A dependent deployment job publishes that artifact and checks that the site responds. It does not rebuild or substitute a different production artifact.
 
 ## Deployment origin and ownership model
 
