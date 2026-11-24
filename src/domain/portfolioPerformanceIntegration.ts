@@ -17,6 +17,7 @@ import {
 import { isPortfolioPerformanceValuationSnapshot } from './portfolioPerformanceCapture';
 import type { PortfolioState } from '../types/portfolio';
 import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
+import { classifyCashflow, normalizeClassifiedCashflowAmount } from './cashflowClassification';
 
 const CASH_ITEM_KEY = 'cash';
 const MARGIN_DEBT_ITEM_KEY = 'margin-debt';
@@ -292,47 +293,84 @@ function parseCashflowTimestamp(value: unknown): number | null {
 
 function mapIncomeCostAdjustments(
   rows: readonly NonNullable<PortfolioState['cashflows']>[number][],
+  events: readonly PortfolioTransactionEvent[],
   startAt: number,
   endAt: number,
   currency: string
 ): AdapterResult<PerformanceAdjustment[]> {
   const adjustments: PerformanceAdjustment[] = [];
   const warnings: string[] = [];
+  const append = (
+    timestamp: number,
+    category: import('../types/portfolioTransaction').CashflowCategory,
+    amountValue: unknown,
+    sourceCurrency: unknown,
+    quality: PerformanceAdjustment['quality'],
+    refund = false
+  ): string | null => {
+    let type: PerformanceAdjustment['type'] | null = null;
+    switch (category) {
+      case 'dividend': type = 'dividend'; break;
+      case 'interest_income': type = 'interestIncome'; break;
+      case 'commission': type = 'commission'; break;
+      case 'fee':
+      case 'tax': type = 'fee'; break;
+      case 'margin_interest': type = 'interest'; break;
+      case 'unclassified':
+        return 'A cashflow row in the reporting period could not be classified; income and costs are unavailable.';
+      default:
+        return null;
+    }
+    const amount = Number(amountValue);
+    const rowCurrency = currencyCode(sourceCurrency);
+    if (!Number.isFinite(amount) || rowCurrency !== currency) {
+      return 'An income or cost cashflow has an invalid amount or a different/unknown currency.';
+    }
+    adjustments.push({ timestamp, type, amount: Math.abs(amount), currency, quality, ...(refund ? { refund: true } : {}) });
+    if (quality === 'provisional') warnings.push('One or more income/cost rows are not verified Freedom broker-history records.');
+    return null;
+  };
+
   for (const row of rows) {
     const timestamp = parseCashflowTimestamp(row.date);
-    if (timestamp === null || timestamp <= startAt || timestamp > endAt) continue;
-    const sourceText = [
-      row.type,
-      row.description,
-      ...Object.values(row.raw || {})
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    let type: PerformanceAdjustment['type'] | null = null;
-    if (/dividend|distribution|coupon/.test(sourceText)) type = 'dividend';
-    else if (/commission/.test(sourceText)) type = 'commission';
-    else if (/margin|interest|financing|borrow fee/.test(sourceText)) type = 'interest';
-    else if (/fee|charge|tax/.test(sourceText)) type = 'fee';
-    if (!type) continue;
-
-    const amount = Math.abs(Number(row.amount));
-    const rowCurrency = currencyCode(row.currency);
-    if (!Number.isFinite(amount) || rowCurrency !== currency) {
-      return { reason: 'An income or cost cashflow has an invalid amount or a different/unknown currency.', warnings: [] };
+    const classification = classifyCashflow({ type: row.type, description: row.description, raw: row.raw || {} });
+    if (timestamp === null) {
+      if (['dividend', 'interest_income', 'commission', 'fee', 'tax', 'margin_interest', 'unclassified'].includes(classification.category)) {
+        return { reason: 'An income/cost cashflow is missing a verifiable timestamp.', warnings: [] };
+      }
+      continue;
     }
-    const quality = typeof row.id === 'string' && row.id.startsWith('freedom-')
-      ? 'current'
-      : 'provisional';
-    if (quality === 'provisional') {
-      warnings.push('One or more income/cost rows are not verified Freedom broker-history records.');
-    }
-    adjustments.push({
-      timestamp,
-      type,
-      amount,
-      currency,
-      quality
-    });
+    if (timestamp <= startAt || timestamp > endAt) continue;
+    if (!['dividend', 'interest_income', 'commission', 'fee', 'tax', 'margin_interest', 'unclassified'].includes(classification.category)) continue;
+    const quality = row.identityQuality === 'fallback' || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id)
+      ? 'provisional'
+      : typeof row.id === 'string' && row.id.startsWith('freedom-') ? 'current' : 'provisional';
+    const classificationText = [row.type, row.description, ...Object.values(row.raw || {})].filter(Boolean).join(' ');
+    const signedAmount = normalizeClassifiedCashflowAmount(classification.category, Number(row.amount), classificationText);
+    const refund = ['fee', 'commission', 'tax', 'margin_interest'].includes(classification.category) && signedAmount > 0;
+    const reason = append(timestamp, classification.category, row.amount, row.currency, quality, refund);
+    if (reason) return { reason, warnings: [...new Set(warnings)] };
   }
+
+  // Broker journal copies are audit evidence; their financial presentation is
+  // sourced from cashflows above. Include only app/system-owned income/costs here.
+  for (const event of events) {
+    if (!event || event.actor.type === 'broker' || event.effectiveAt <= startAt || event.effectiveAt > endAt) continue;
+    if (!['dividend', 'interest.income', 'fee', 'margin.interest'].includes(event.type)) continue;
+    const category = event.cashflowCategory ?? (
+      event.type === 'dividend' ? 'dividend' :
+      event.type === 'interest.income' ? 'interest_income' :
+      event.type === 'margin.interest' ? 'margin_interest' : 'fee'
+    );
+    const amount = event.grossAmount ?? event.financingCost ?? event.fees ?? event.externalCashFlowAmount;
+    const sourceCurrency = event.currency ?? (event.source === 'rollover' ? currency : undefined);
+    const quality: PerformanceAdjustment['quality'] =
+      event.source === 'manual-cash-activity' || (event.source === 'rollover' && Boolean(event.currency))
+        ? 'current' : 'provisional';
+    const reason = append(event.effectiveAt, category, amount, sourceCurrency, quality);
+    if (reason) return { reason, warnings: [...new Set(warnings)] };
+  }
+
   return { value: adjustments, warnings: [...new Set(warnings)] };
 }
 
@@ -424,6 +462,7 @@ export function buildPortfolioPerformanceReport(
 
   const incomeCostResult = mapIncomeCostAdjustments(
     state.cashflows || [],
+    state.transactionEvents || [],
     startAt,
     endAt,
     currency

@@ -132,11 +132,13 @@ export interface PeriodAttribution {
   items: PerformanceAttributionItemResult[];
 }
 
-type PerformanceAdjustmentType = 'dividend' | 'fee' | 'commission' | 'interest';
+type PerformanceAdjustmentType = 'dividend' | 'interestIncome' | 'fee' | 'commission' | 'interest';
 
 export interface PerformanceAdjustment {
   timestamp: number;
   type: PerformanceAdjustmentType;
+  /** True when a broker operation reverses part of a fee/cost category. */
+  refund?: boolean;
   /** Positive magnitude; fees/commissions/interest are costs, dividends are income. */
   amount: number;
   currency: string;
@@ -146,6 +148,7 @@ export interface PerformanceAdjustment {
 export interface PerformanceIncomeCostSummary {
   currency: string;
   dividends: number;
+  interestIncome: number;
   fees: number;
   commissions: number;
   interest: number;
@@ -697,6 +700,7 @@ export function summarizePerformanceIncomeAndCosts(
   const currency = currencyCode(currencyInput);
   if (!currency) return unavailable('A three-letter summary currency is required.');
   let dividends = 0;
+  let interestIncome = 0;
   let fees = 0;
   let commissions = 0;
   let interest = 0;
@@ -715,21 +719,25 @@ export function summarizePerformanceIncomeAndCosts(
     if (!validQuality(adjustment.quality)) {
       return unavailable('An income/cost adjustment has missing or invalid data quality.');
     }
+    if (adjustment.refund !== undefined && typeof adjustment.refund !== 'boolean') {
+      return unavailable('An income/cost adjustment has an invalid refund flag.');
+    }
     if (adjustment.quality === 'incomplete') {
       return unavailable('An income/cost adjustment is incomplete.');
     }
     qualities.push(adjustment.quality);
     switch (adjustment.type) {
       case 'dividend': dividends += adjustment.amount; break;
-      case 'fee': fees += adjustment.amount; break;
-      case 'commission': commissions += adjustment.amount; break;
-      case 'interest': interest += adjustment.amount; break;
+      case 'interestIncome': interestIncome += adjustment.amount; break;
+      case 'fee': fees += adjustment.refund ? -adjustment.amount : adjustment.amount; break;
+      case 'commission': commissions += adjustment.refund ? -adjustment.amount : adjustment.amount; break;
+      case 'interest': interest += adjustment.refund ? -adjustment.amount : adjustment.amount; break;
       default: return unavailable('An unsupported income/cost adjustment type was supplied.');
     }
   }
 
-  const netIncomeAndCosts = dividends - fees - commissions - interest;
-  if (![dividends, fees, commissions, interest, netIncomeAndCosts].every(Number.isFinite)) {
+  const netIncomeAndCosts = dividends + interestIncome - fees - commissions - interest;
+  if (![dividends, interestIncome, fees, commissions, interest, netIncomeAndCosts].every(Number.isFinite)) {
     return unavailable('The income/cost summary exceeds the supported numeric range.');
   }
   const quality = mergeQuality(...qualities);
@@ -737,6 +745,7 @@ export function summarizePerformanceIncomeAndCosts(
   return resultWithQuality({
     currency,
     dividends,
+    interestIncome,
     fees,
     commissions,
     interest,

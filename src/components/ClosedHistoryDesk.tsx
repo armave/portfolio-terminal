@@ -30,6 +30,7 @@ import type {
 } from '../features/trades/closedHistoryRows';
 import { useDelayedActivityVisibility, WORKSPACE_ACTIVITY_INDICATOR_SHOW_DELAY_MS } from '../ui/delayedActivityVisibility';
 import { OperationActivityIndicator } from './OperationActivityIndicator';
+import { CashActivityLedger } from './CashActivityLedger';
 
 const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 const normalizeBrokerExecutions = (value: unknown): FreedomExecutedTrade[] =>
@@ -227,7 +228,7 @@ function ClosedTradeAllocationControls({
   );
 }
 
-export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, isWorkspaceSyncReady }: { accountId: string; isSessionCurrent?: () => boolean; isWorkspaceSyncReady: boolean }) {
+export function ClosedHistoryDesk({ accountId, canPostCashActivity = false, canViewCashActivity = false, isSessionCurrent = () => true, isWorkspaceSyncReady }: { accountId: string; canPostCashActivity?: boolean; canViewCashActivity?: boolean; isSessionCurrent?: () => boolean; isWorkspaceSyncReady: boolean }) {
   const state = usePortfolioSelector(selectTradesPortfolioState, areTradesPortfolioStatesEqual);
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTrade>,
@@ -243,6 +244,8 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
     () => getLastExecutedTradesRefreshAt(`admin:${accountId}`)
   );
   const [brokerReconciliationOpen, setBrokerReconciliationOpen] = useState(false);
+  const [tradesWorkspaceTab, setTradesWorkspaceTab] = useState<'closed' | 'cash'>('closed');
+  const showCashActivity = canViewCashActivity && tradesWorkspaceTab === 'cash';
   const [BrokerReconciliationView, setBrokerReconciliationView] = useState<
     typeof import('./BrokerTransactionReconciliation').BrokerTransactionReconciliation | null
   >(null);
@@ -630,19 +633,11 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
 
   // Only block the desk when there is nothing cached or app-owned to display.
   // Cloud reconciliation and fee refreshes continue independently in the background.
-  if (brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0) {
-    return <DeskLoading
-      title="Preparing trades"
-      message="Restoring saved trade history and loading the latest Freedom activity…"
-      accent="purple"
-    />;
-  }
-
   return (
-    <section class="desk-page-content min-w-0 space-y-4" aria-label={translateText('Trades', getAppLanguage())}>
+    <section class="desk-page-content min-w-0 space-y-4" aria-label={translateText(showCashActivity ? 'Cash Activity' : 'Trades', getAppLanguage())}>
       <DeskPageHeader
-        title={translateText('Trades', getAppLanguage())}
-        description={translateText('Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.', getAppLanguage())}
+        title={translateText(showCashActivity ? 'Cash Activity' : 'Trades', getAppLanguage())}
+        description={translateText(showCashActivity ? 'Review deposits, withdrawals, dividends, interest and broker-reported cash activity.' : 'Closed trades and sell executions, including partial sales. Buy executions are used for duration matching, not shown as closed trades.', getAppLanguage())}
         trailing={(
           <div class="flex min-w-0 flex-col items-center gap-2 text-xs sm:items-end">
             <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center sm:justify-end sm:text-right">
@@ -667,6 +662,23 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         )}
       />
 
+      <div class="flex flex-wrap gap-2" role="tablist" aria-label={translateText('Trades workspace views', getAppLanguage())}>
+        <button type="button" role="tab" aria-selected={!showCashActivity} onClick={() => setTradesWorkspaceTab('closed')}
+          class={'min-h-10 rounded border px-3 text-xs font-semibold ' + (!showCashActivity ? 'border-purple-600/70 bg-purple-950/30 text-purple-200' : 'border-slate-700 text-slate-400 hover:text-slate-200')}>
+          {translateText('Closed trades', getAppLanguage())}
+        </button>
+        {canViewCashActivity && (
+        <button type="button" role="tab" aria-selected={showCashActivity} onClick={() => setTradesWorkspaceTab('cash')}
+          class={'min-h-10 rounded border px-3 text-xs font-semibold ' + (showCashActivity ? 'border-cyan-700/70 bg-cyan-950/30 text-cyan-200' : 'border-slate-700 text-slate-400 hover:text-slate-200')}>
+          {translateText('Cash Activity', getAppLanguage())}
+        </button>
+        )}
+      </div>
+      {!showCashActivity ? (
+        <>
+          {brokerTradesLoading && brokerTrades.length === 0 && appTrades.length === 0 && (
+            <DeskLoading title="Preparing trades" message="Restoring saved trade history and loading the latest Freedom activity…" accent="purple" />
+          )}
       <div class="rounded-lg border border-slate-800 bg-slate-950/30 px-3 py-2">
         <button
           type="button"
@@ -926,6 +938,10 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
         controlsClassName="closed-history-pagination-controls"
         controlsId="closedTradesHistory"
       />
+        </>
+      ) : (
+        <CashActivityLedger accountId={accountId} canPostCashActivity={canPostCashActivity} isSessionCurrent={isSessionCurrent} />
+      )}
     </section>
   );
 }

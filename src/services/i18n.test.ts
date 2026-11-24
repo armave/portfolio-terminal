@@ -30,6 +30,26 @@ describe('app localization', () => {
     }
   });
 
+  it('localizes Cash Activity ledger and posting copy in Russian', () => {
+    const cashActivityCopy = [
+      'Cash Activity', 'Trades workspace views', 'Closed trades', 'Period',
+      'Review deposits, withdrawals, dividends, interest and broker-reported cash activity.',
+      'Cash Activity ledger', 'Available USD cash', 'Margin debt',
+      'Known inflows · USD', 'Known outflows · USD', 'Deposit', 'Withdrawal',
+      'Dividend', 'Interest income', 'Commission', 'Fee', 'Tax', 'Margin interest',
+      'Transfer', 'Adjustment', 'Correction', 'Corporate action', 'Unclassified',
+      'Record manual cash activity', 'Posts to USD cash ledger', 'Activity type',
+      'Amount · USD', 'Activity date', 'Note (optional)', 'Description or reference',
+      'Transfer direction', 'Inflow', 'Outflow', 'Save activity',
+      'Search activity', 'Category', 'All categories', 'All time',
+      'Known net cash movement', 'No cash activity matches these filters.',
+      'records have incomplete classification, amount, currency, date or source identity. They remain visible and are excluded from USD totals.',
+      'This account cannot post cash activity.', 'Enter a positive amount and a valid activity date.',
+      'Activity was not posted. Check available USD cash, the amount and local storage, then retry.',
+      'Cash activity was posted and saved.', 'Withdrawals, fees and transfers out use available cash only. They never create margin debt. Margin interest increases debt only when explicitly recorded as this activity type.'
+    ];
+    for (const copy of cashActivityCopy) expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+  });
   it('localizes cloud synchronization diagnostics in Russian', () => {
     const cloudDiagnosticCopy = [
       'Cloud synchronization diagnostics', 'Application API', 'Reachable', 'Cloud request', 'Last request confirmed', 'Last request failed', 'Request in progress', 'Cloud portfolio',

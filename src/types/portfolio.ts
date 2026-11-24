@@ -385,7 +385,7 @@ export interface PortfolioState {
   marketHistoryCorrections?: MarketHistoryCorrectionEvent[];
   closedHistory?: ClosedTrade[];
   /** Normalized broker-reported cashflows, stored separately from closed trade P&L. */
-  cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; raw?: Record<string, string> }>;
+  cashflows?: Array<{ id: string; date: string; type: string; amount: number; currency?: string; description?: string; identityQuality?: 'provider' | 'fallback'; raw?: Record<string, string> }>;
   brokerAssumptions: BrokerAssumptions;
   /** Admin-managed app planning defaults; separate from broker-reported rules. */
   portfolioSettings?: import('../domain/portfolioSettings').PortfolioSettings;
