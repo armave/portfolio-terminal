@@ -8,6 +8,7 @@ on:
       - 'worker.js'
       - 'src/services/freedomTradeNet.ts'
       - 'state-store.js'
+      - 'tenant-key-service.js'
       - 'src/services/freedomMarketDepth.js'
       - 'wrangler.jsonc'
   workflow_dispatch:
@@ -66,7 +67,7 @@ jobs:
         run: npm run typecheck
 
       - name: Validate Worker and authentication tests
-        run: npx vitest run worker.test.js user-auth.test.js
+        run: npx vitest run worker.test.js user-auth.test.js tenant-key-service.test.js
 
       - name: Audit all dependencies
         run: npm run audit:dependencies
