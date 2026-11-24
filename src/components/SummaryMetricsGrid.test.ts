@@ -528,8 +528,11 @@ describe('cross-device financial header hierarchy', () => {
 describe('Combined Margin data quality and position comparison', () => {
   it('shows input quality and adds a separate position comparison surface', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('class="portfolio-data-quality-summary"');
-    expect(source).toContain('data-valuation-quality={dataQualityLabel}');
+    expect(source).toContain('className="portfolio-data-quality-summary"');
+    expect(source).toContain('status={dataQualityStatus}');
+    expect(source).toContain('statusLabel={translateText(dataQualityLabel, getAppLanguage())}');
+    const noticeSource = readFileSync(new URL('./DataQualityNotice.tsx', import.meta.url), 'utf8');
+    expect(noticeSource).toContain('data-valuation-quality={statusLabel}');
     expect(source).toContain('marginQuoteIssueTickers.map');
     expect(source).toContain("view: 'BALANCE'");
     expect(source).toContain("translateText('Missing or stale inputs are not treated as zero.'");

@@ -131,6 +131,7 @@ describe('Margin projection and insights layout', () => {
   const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   const projectionSource = readFileSync(new URL('../components/ProjectionsTable.tsx', import.meta.url), 'utf8');
   const paginationSource = readFileSync(new URL('../components/TablePagination.tsx', import.meta.url), 'utf8');
+  const toastViewportSource = readFileSync(new URL('../components/ToastViewport.tsx', import.meta.url), 'utf8');
 
   it('places the projection table and market insights in the same responsive workspace row', () => {
     const workspaceStart = appSource.indexOf('id="marginDataWorkspace"');
@@ -218,7 +219,8 @@ describe('desk transitions and supporting layouts', () => {
     expect(inputTransition).toContain('background-color 140ms ease');
     expect(inputTransition).toContain('border-color 140ms ease');
     expect(inputTransition).not.toMatch(/\b(?:box-shadow|opacity|transform)\b/);
-    expect(appSource).toContain('transition-[opacity,transform] duration-200 ease-out');
+    expect(toastViewportSource).toContain('transition-[opacity,transform] duration-200 ease-out');
+    expect(appSource).toContain('<ToastViewport toasts={toasts} />');
     expect(appSource).not.toContain('transition-all');
   });
 
