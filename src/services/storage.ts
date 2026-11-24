@@ -398,9 +398,6 @@ export function initializePortfolioStateRecoveryStorage(
       try {
         localCurrent = parseJsonRecord(storage.getItem(canonicalKey));
         localRecovery = parseJsonRecord(storage.getItem(recoveryKey));
-        if (!localCurrent && !localRecovery) {
-          localCurrent = parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_LEGACY_STATE, scope)));
-        }
       } catch (error) {
         logSafeDiagnostic('warn', 'browser-storage', error);
       }
@@ -434,7 +431,9 @@ export function initializePortfolioStateRecoveryStorage(
     const resetRecovery = isExplicitPortfolioReset(current);
     const recovery = resetRecovery
       ? current
-      : localRecovery ?? indexed.current ?? indexed.recovery ?? current;
+      : localRecovery ?? (localCurrent
+        ? indexed.current ?? indexed.recovery ?? current
+        : indexed.recovery ?? indexed.current ?? current);
     try {
       await writePortfolioStateRecoveryRecordsToIndexedDB(current, recovery, scope, resetRecovery);
     } catch (error) {
