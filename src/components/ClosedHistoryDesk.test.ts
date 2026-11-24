@@ -271,8 +271,9 @@ describe('Trades cache-first rendering', () => {
     expect(source).not.toContain('if (brokerTradesLoading || !cashflowHistoryReady');
     expect(source).toContain("emitBrokerEvent('broker:request-executed-trades', { priority: 'interactive' });");
     expect(source).toContain('const showBrokerRefreshIndicator = useDelayedActivityVisibility(brokerTradesRefreshing, {');
-    expect(source).toContain('showDelayMs: 700');
-    expect(source).toContain('showBrokerRefreshIndicator && (');
+    expect(source).toContain('showDelayMs: WORKSPACE_ACTIVITY_INDICATOR_SHOW_DELAY_MS');
+    expect(source).toContain('<OperationActivityIndicator');
+    expect(source).toContain('visible={showBrokerRefreshIndicator}');
     expect(source).toContain('Refreshing TradeNet execution history…');
     expect(source).not.toContain('backgroundSyncPending');
     expect(source).not.toContain('Updating saved trade calculations in the background…');
@@ -284,11 +285,8 @@ describe('Trades cache-first rendering', () => {
     );
     expect(source).toContain('}, [isWorkspaceSyncReady, cashflowHistoryReady, cashflowSyncReady, brokerTradesLoading, allocationInputKey]);');
     expect(allocationEffect).toContain("requestClosedHistorySync('recalculate')");
-    expect(source).toContain('role="status"');
-    expect(source).toContain('animate-spin');
-    expect(source).toContain('strokeDasharray="24 14"');
-    expect(source).toContain('strokeWidth="2"');
-    expect(source).toContain('motion-reduce:animate-none');
+    expect(source).not.toContain('<svg viewBox="0 0 16 16"');
+    expect(source).not.toContain('strokeDasharray="24 14"');
     expect(source).not.toContain('backgroundSyncPending && trades.length > 0');
     expect(source).not.toContain('Refreshing TradeNet history…</p>');
   });

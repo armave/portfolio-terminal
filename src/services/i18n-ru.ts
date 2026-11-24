@@ -23,6 +23,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Summary reflects current filters': 'Сводка рассчитана по текущим фильтрам',
   'Clear filters': 'Сбросить фильтры',
   'Refreshing TradeNet execution history…': 'Обновление истории исполнений TradeNet…',
+  'Refreshing history…': 'Обновление истории…',
   'No trades match the current filters': 'По текущим фильтрам сделки не найдены',
   'Funding and guest allocation': 'Тип финансирования и назначение гостю',
 

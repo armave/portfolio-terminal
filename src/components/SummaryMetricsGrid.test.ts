@@ -118,6 +118,17 @@ describe('portfolio metric quote updates', () => {
   });
 });
 
+describe('shared data-quality notice integration', () => {
+  it('routes aggregate valuation quality through the reusable notice without changing the quality decision', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('<DataQualityNotice');
+    expect(source).toContain('status={dataQualityStatus}');
+    expect(source).toContain("const dataQualityStatus = valuationStatus === 'incomplete'");
+    expect(source).toContain("risk.status === 'unavailable'");
+    expect(source).toContain('Missing or stale inputs are not treated as zero.');
+  });
+});
+
 describe('margin tranche quantity display', () => {
   it('uses canonical qty first and supports legacy shares and broker quantity fields', () => {
     expect(getMarginTrancheQuantity({ qty: 5, shares: 9, quantity: 12 })).toBe(5);

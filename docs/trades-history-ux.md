@@ -43,3 +43,10 @@ All added user-facing copy must be localized in English and Russian. The feature
 The Trades fee-allocation fingerprint is a memoized presentation/runtime dependency, not a new accounting cache. It is invalidated when cashflows, broker executions, app closed trades, tranche funding rules, tranche mixes, or (when broker execution history is absent) canonical open positions change. When broker executions are present, open positions are not passed as an allocation source, so quote-only position updates do not force the same large input projection and JSON serialization to run again. The deterministic allocator and its inputs remain unchanged.
 
 Cloud workspace checkpoints read the current canonical state without committing a timestamp-only portfolio mutation. A timer firing is not itself a portfolio change; actual durable mutations continue to update their existing local-save metadata. Cloud revision, encryption, conflict, and last-known-good behavior remain unchanged.
+
+
+## Shared operation feedback
+
+The global Cloud indicator and the Trades foreground TradeNet refresh use the same presentation-only `OperationActivityIndicator`. Their state owners remain separate: cloud workspace sync is sourced from cloud sync status, while the Trades indicator is sourced only from the matching broker execution-history refresh request. Cashflow reconciliation, fee recalculation and quiet cloud-history hydration do not drive the Trades spinner.
+
+Both workspace indicators use the shared 700 ms appearance delay and 650 ms minimum visible duration. The lower-level delayed-visibility controller retains its 400 ms default for other callers. The shared component does not schedule, coalesce or perform synchronization work.

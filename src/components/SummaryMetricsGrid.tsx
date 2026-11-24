@@ -34,6 +34,7 @@ import { emitUiEvent } from '../ui/uiEventBus';
 import { BoardExternalLinks } from './BoardExternalLinks';
 import { MarginRiskOverviewModal } from './MarginRiskOverviewModal';
 import { CombinedPositionsTable } from './CombinedPositionsTable';
+import { DataQualityNotice } from './DataQualityNotice';
 
 const freedomBrokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 
@@ -776,6 +777,13 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         : valuationStatus === 'provisional' || risk.status === 'provisional'
           ? 'Provisional estimate'
           : 'Current';
+    const dataQualityStatus = valuationStatus === 'incomplete'
+      ? 'incomplete'
+      : risk.status === 'unavailable'
+        ? 'unavailable'
+        : valuationStatus === 'provisional' || risk.status === 'provisional'
+          ? 'provisional'
+          : 'current';
     const dataQualityHasIssues = unpricedMarginPositionCount > 0 || unpricedCashHoldingCount > 0 ||
       valuationQuoteSummary.stale > 0 || valuationQuoteSummary.delayed > 0 ||
       valuationQuoteSummary.unknown > 0 || valuationQuoteSummary.unavailable > 0 ||
@@ -846,11 +854,12 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
         </section>
 
 
-        <section class="portfolio-data-quality-summary" aria-label={translateText('Risk data quality', getAppLanguage())}>
-          <div class="portfolio-data-quality-summary__heading">
-            <span>{translateText('Risk data quality', getAppLanguage())}</span>
-            <strong data-valuation-quality={dataQualityLabel}>{translateText(dataQualityLabel, getAppLanguage())}</strong>
-          </div>
+        <DataQualityNotice
+          title={translateText('Risk data quality', getAppLanguage())}
+          status={dataQualityStatus}
+          statusLabel={translateText(dataQualityLabel, getAppLanguage())}
+          className="portfolio-data-quality-summary"
+        >
           <div class="portfolio-data-quality-summary__issues">
             {marginQuoteIssueTickers.map((ticker) => {
               const position = state.positions![ticker];
@@ -885,7 +894,7 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
               {translateText('Risk is provisional because at least one valuation or broker margin input is assumption-based, stale, delayed or unknown.', getAppLanguage())}
             </p>
           )}
-        </section>
+        </DataQualityNotice>
 
         <div class="portfolio-risk-tools-row">
           <div class="portfolio-health-summary-column">
