@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 function readSource(): string {
-  return readFileSync(new URL('./CashActivityLedger.tsx', import.meta.url), 'utf8').replace(/\\r\\n/g, '\\n');
+  return readFileSync(new URL('./CashActivityLedger.tsx', import.meta.url), 'utf8');
 }
 
 describe('Cash Activity shared table', () => {
@@ -23,7 +23,7 @@ describe('Cash Activity shared table', () => {
 
   it('resets to the first page when search, category, or period filters change', () => {
     const source = readSource();
-    expect(source.match(/pagination\\.setPage\\(1\\)/g) || []).toHaveLength(3);
+    expect(source.split('pagination.setPage(1)').length - 1).toBe(3);
   });
 
   it('retains the distinction between cash movement and debt-only margin interest', () => {
