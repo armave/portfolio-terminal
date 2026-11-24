@@ -101,9 +101,20 @@ async function mockWorkerApi(page) {
       profit: '0'
     }] } }
   };
-  const closedSalePayload = {
-    trade_id: 'smoke-sell-aapl-1',
-    instr_nm: 'AAPL.US',
+  const closedSalePayload = [{
+    trade_id: 'smoke-buy-tsla-1',
+    instr_nm: 'TSLA.US',
+    type: '1',
+    quantity: '5',
+    p: '10',
+    date: '2026-11-02T10:30:00.000Z',
+    v: '50',
+    curr_c: 'USD',
+    commiss: '0.10',
+    profit: '0'
+  }, {
+    trade_id: 'smoke-sell-tsla-1',
+    instr_nm: 'TSLA.US',
     type: '2',
     quantity: '5',
     p: '11',
@@ -112,7 +123,7 @@ async function mockWorkerApi(page) {
     curr_c: 'USD',
     commiss: '0.10',
     profit: '5'
-  };
+  }];
   const json = async (route, status, payload, extraHeaders = {}, call = null) => {
     if (call) call.responseStatus = status;
     const origin = route.request().headers().origin || '*';
@@ -249,7 +260,7 @@ async function mockWorkerApi(page) {
             ? {
                 data: {
                   trades: {
-                    trade: [...tradesPayload.data.trades.trade, closedSalePayload]
+                    trade: [...tradesPayload.data.trades.trade, ...closedSalePayload]
                   }
                 }
               }
