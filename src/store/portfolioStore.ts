@@ -1647,7 +1647,7 @@ export class PortfolioStore {
           : Number.NaN;
       const signedBalance = state.balance;
       const realizedMarginCharged = state.realizedMarginCharged;
-      if (![freeCash, signedDebt, realizedMarginCharged].every(value =>
+      if (![freeCash, signedBalance, realizedMarginCharged].every(value =>
         typeof value === 'number' && Number.isFinite(value)) ||
         freeCash < 0 || (isCapitalizedInterest && signedBalance > 0) || realizedMarginCharged < 0) { rejected = true; return null; }
       const nextFreeCash = freeCash + cashDelta;
