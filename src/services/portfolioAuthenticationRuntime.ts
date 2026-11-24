@@ -62,6 +62,9 @@ export function createPortfolioAuthenticationRuntime(
       dependencies.saveGatewaySecret(submittedSecret);
     // Resolve the account role before any store update can trigger the cloud-write subscriber.
     const authenticatedUser = await dependencies.publishCurrentUser();
+    if (!authenticatedUser) {
+      throw new Error('The authenticated account could not be activated. Please retry sign-in.');
+    }
     // Move a guest into their own Balance view immediately. The startup/pull path
     // below may take time or fail transiently; navigation must not depend on it.
     if (authenticatedUser?.role === 'guest') dependencies.setActiveView('BALANCE');
