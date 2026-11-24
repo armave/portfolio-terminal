@@ -24,6 +24,7 @@ export default defineConfig({
         'src/store/portfolioMigrations.ts',
         'src/store/portfolioStore.ts',
         'src/store/portfolioSubscriptions.ts',
+        'src/services/tradesHistorySyncRuntime.ts',
         'worker.js',
         'state-store.js'
       ],

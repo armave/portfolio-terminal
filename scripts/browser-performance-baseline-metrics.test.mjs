@@ -211,7 +211,10 @@ describe('repeatable same-candidate performance workflow dispatch', () => {
     expect(concurrencyGroup).toContain('github.event_name');
     expect(concurrencyGroup).toContain('workflow_dispatch');
     expect(concurrencyGroup).toContain('github.run_id');
-    expect(workflow).toContain('cancel-in-progress: true');
+    const cancelPolicy = workflow.split('\n').find(line => line.trimStart().startsWith('cancel-in-progress:'));
+    expect(cancelPolicy).toContain("github.ref != 'refs/heads/main'");
+    expect(workflow).toContain('group: github-pages');
+    expect(workflow).toContain('cancel-in-progress: false');
   });
 
   it('keeps ten samples per viewport as the manual benchmark default', () => {
