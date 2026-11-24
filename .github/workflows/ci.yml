@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: pr-ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'shared' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   quality:
@@ -426,3 +426,103 @@ jobs:
           path: coverage/
           if-no-files-found: error
           retention-days: 30
+
+  pages-deploy:
+    name: Publish validated GitHub Pages artifact
+    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    needs:
+      - quality
+      - production-build
+      - browser-smoke
+      - operations-browser
+      - coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download the production build artifact from this exact CI run
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: portfolio-terminal-dist
+          path: dist/
+
+      - name: Verify artifact provenance against this successful CI candidate
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+          EXPECTED_RUN_ID: ${{ github.run_id }}
+          EXPECTED_EVENT: ${{ github.event_name }}
+          EXPECTED_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const provenance = JSON.parse(readFileSync('dist/build-provenance.json', 'utf8'));
+          const expected = {
+            commit: process.env.EXPECTED_COMMIT,
+            runId: process.env.EXPECTED_RUN_ID,
+            event: process.env.EXPECTED_EVENT,
+            ref: process.env.EXPECTED_REF
+          };
+          for (const [field, value] of Object.entries(expected)) {
+            if (provenance[field] !== value) {
+              throw new Error('Production artifact provenance mismatch for ' + field + '.');
+            }
+          }
+          console.log('Validated production artifact for ' + provenance.commit + ' from CI run ' + provenance.runId + '.');
+          NODE
+
+      - name: Upload the exact validated Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/
+
+      - name: Deploy validated Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Verify published site responds
+        id: verify_published_site
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          set -euo pipefail
+          test -n "$PAGE_URL"
+          curl --fail --location --silent --show-error \
+            --retry 8 --retry-delay 5 --retry-connrefused --max-time 20 \
+            "$PAGE_URL" --output "$RUNNER_TEMP/pages-index.html"
+          grep -qi "Portfolio Terminal" "$RUNNER_TEMP/pages-index.html"
+
+      - name: Publish exact-artifact deployment evidence
+        if: always()
+        env:
+          DEPLOYED_COMMIT: ${{ github.sha }}
+          DEPLOYED_RUN_ID: ${{ github.run_id }}
+          DEPLOY_RESULT: ${{ steps.deployment.outcome || 'not-run' }}
+          VERIFY_RESULT: ${{ steps.verify_published_site.outcome || 'not-run' }}
+          DEPLOYED_URL: ${{ steps.deployment.outputs.page_url || 'not-published' }}
+        run: |
+          {
+            echo "## GitHub Pages exact-artifact deployment"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Source commit | $DEPLOYED_COMMIT |"
+            echo "| Source CI run | $DEPLOYED_RUN_ID |"
+            echo "| Deployment | $DEPLOY_RESULT |"
+            echo "| Published-site verification | $VERIFY_RESULT |"
+            echo "| URL | $DEPLOYED_URL |"
+            echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
+          } >> "$GITHUB_STEP_SUMMARY"
