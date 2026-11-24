@@ -501,8 +501,9 @@ export function initializePortfolioStateRecoveryStorage(
     portfolioStateSnapshotCacheByScope.set(scope, current);
     if (storage) {
       try {
-        const rawCurrent = storage.getItem(canonicalKey);
-        if (!parseJsonRecord(rawCurrent)) storage.setItem(canonicalKey, JSON.stringify(current));
+        const rawCurrent = parseJsonRecord(storage.getItem(canonicalKey));
+        const newest = selectNewestPortfolioStateSnapshots([rawCurrent, current]).current;
+        if (newest && newest !== rawCurrent) storage.setItem(canonicalKey, JSON.stringify(newest));
       } catch (error) {
         // This can still fail when even one active copy exceeds localStorage quota.
         // The validated IndexedDB snapshot remains available to this session.
@@ -1412,7 +1413,16 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
         }
       }
 
-      const persistedState = { ...parsed };
+      const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
+      const newest = selectNewestPortfolioStateSnapshots([parsed, cached]).current ?? parsed;
+      if (newest !== parsed && key === canonicalKey) {
+        try {
+          storage.setItem(canonicalKey, JSON.stringify(newest));
+        } catch (error) {
+          logSafeDiagnostic('warn', 'browser-storage', error);
+        }
+      }
+      const persistedState = { ...newest };
       // Credentials and independently persisted history are not part of the startup snapshot.
       delete persistedState.gatewaySecret;
       delete persistedState.brokerExecutedTrades;
