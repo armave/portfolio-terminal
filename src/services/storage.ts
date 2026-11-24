@@ -435,7 +435,17 @@ export function initializePortfolioStateRecoveryStorage(
         ? indexed.current ?? indexed.recovery ?? current
         : indexed.recovery ?? indexed.current ?? current);
     try {
-      await writePortfolioStateRecoveryRecordsToIndexedDB(current, recovery, scope, resetRecovery);
+      const sameSnapshot = (left: Record<string, unknown> | null, right: Record<string, unknown>) => {
+        if (!left) return false;
+        try {
+          return JSON.stringify(left) === JSON.stringify(right);
+        } catch {
+          return false;
+        }
+      };
+      if (!sameSnapshot(indexed.current, current) || !sameSnapshot(indexed.recovery, recovery)) {
+        await writePortfolioStateRecoveryRecordsToIndexedDB(current, recovery, scope, resetRecovery);
+      }
     } catch (error) {
       // The existing local recovery copy is removed only after this commit.
       portfolioStateSnapshotCacheByScope.set(scope, current);
@@ -1213,12 +1223,14 @@ function persistPortfolioSnapshot(
 
   state.lastUpdated = savedAt;
   portfolioStateSnapshotCacheByScope.set(scope, nextStateSnapshot);
-  queuePortfolioStateRecoveryWrite(
-    nextStateSnapshot,
-    resetRecovery ? nextStateSnapshot : previousStateSnapshot,
-    scope,
-    resetRecovery
-  );
+  if (stateChanged || resetRecovery) {
+    queuePortfolioStateRecoveryWrite(
+      nextStateSnapshot,
+      resetRecovery ? nextStateSnapshot : previousStateSnapshot,
+      scope,
+      resetRecovery
+    );
+  }
   return { success: true, stateChanged, savedAt };
 }
 
