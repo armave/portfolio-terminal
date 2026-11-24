@@ -54,20 +54,39 @@ try {
     reason = 'Complete pull request file list retrieved from GitHub';
   } else if (eventName === 'push') {
     const before = event.before;
-    const commits = event.commits;
-    const expectedCommits = event.size;
+    const after = event.after;
+    const pushedCommits = event.commits;
     if (typeof before !== 'string' || /^0+$/.test(before) ||
-        !Array.isArray(commits) || commits.length === 0 ||
-        !Number.isInteger(expectedCommits) || commits.length !== expectedCommits) {
+        typeof after !== 'string' || /^0+$/.test(after) ||
+        !Array.isArray(pushedCommits) || pushedCommits.length === 0) {
       throw new Error('Push metadata is incomplete; full validation is required.');
     }
-    files = commits.flatMap(commit => [
-      ...(Array.isArray(commit.added) ? commit.added : []),
-      ...(Array.isArray(commit.modified) ? commit.modified : []),
-      ...(Array.isArray(commit.removed) ? commit.removed : [])
-    ]);
-    if (files.length === 0) throw new Error('No changed paths were present in the push payload.');
-    reason = 'Complete changed-path metadata retrieved from the push event';
+
+    // GitHub Actions push payloads omit per-commit changed-file arrays.
+    // Compare the exact before/after SHAs and fail closed at the API's 300-file cap.
+    const response = await fetch(
+      `${apiUrl}/repos/${repository}/compare/${before}...${after}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28'
+        },
+        signal: AbortSignal.timeout(15_000)
+      }
+    );
+    if (!response.ok) throw new Error(`GitHub commit comparison API returned HTTP ${response.status}.`);
+    const comparison = await response.json();
+    if (!Array.isArray(comparison.files) || !Number.isInteger(comparison.total_commits) ||
+        comparison.total_commits !== pushedCommits.length ||
+        comparison.files.length === 0 || comparison.files.length >= 300) {
+      throw new Error('The push comparison was incomplete or exceeded the changed-file limit.');
+    }
+    files = comparison.files.map(file => file.filename).filter(name => typeof name === 'string');
+    if (files.length !== comparison.files.length) {
+      throw new Error('The push comparison contained an invalid file entry.');
+    }
+    reason = 'Complete changed-file list retrieved from the exact push before/after comparison';
   } else {
     forceFullValidation = true;
     reason = 'Manual, scheduled, or unsupported event; run the complete validation suite';

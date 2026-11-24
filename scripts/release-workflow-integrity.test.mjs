@@ -30,6 +30,9 @@ describe('change-aware CI execution', () => {
     expect(classifier).toContain('runBrowser: true');
     expect(detector).toContain('forceFullValidation = true');
     expect(detector).toContain('result.length !== expectedCount');
+    expect(detector).toContain('/compare/');
+    expect(detector).toContain('comparison.files.length >= 300');
+    expect(detector).toContain('comparison.total_commits !== pushedCommits.length');
   });
 });
 
