@@ -2,9 +2,9 @@
 
 The GitHub connection used for this work can inspect repository rulesets but does not expose repository-administration writes. The committed workflow files therefore do not claim to have changed these settings.
 
-## Observed repository configuration snapshot — 2026-11-17
+## Observed repository configuration snapshot — 2026-11-24
 
-Read-only inspection of the repository Rulesets API returned one active repository ruleset:
+Read-only inspection of the repository Rulesets API returned one active repository ruleset (ID `25641648`):
 
 | Setting | Observed value |
 |---|---|
@@ -20,9 +20,11 @@ Read-only inspection of the repository Rulesets API returned one active reposito
 
 No repository ruleset targeting `refs/heads/dev` was returned. This is a repository-level ruleset snapshot, not proof that no organization-level rules or classic branch-protection settings apply. The classic branch-protection endpoint and environment-settings endpoint were not readable through this GitHub connection, so their state remains unverified.
 
-**Implication:** the active `main-protection` ruleset does not currently enforce the quality/security checks described below, and it permits a repository-role bypass. Do not report #561 as complete until an administrator confirms the effective rules, adds the required checks/review policy, creates the `dev` ruleset, and verifies the `cloudflare-production` environment controls.
+The committed reference files `github-rulesets/main-protection.json` and `github-rulesets/dev-protection.json` already list the intended eight stable CI contexts. Those names were cross-checked against the completed Actions checks on the latest main commit. The live `main-protection` ruleset does not yet contain a required-status-check rule, and there is no active `dev-protection` ruleset visible through the Rulesets API.
 
-This PR records observed configuration only. It does not change repository settings or deployment permissions.
+**Implication:** successful workflows currently provide evidence but are not enforced by the visible repository ruleset. The existing `main-protection` ruleset also permits a `RepositoryRole` bypass. Do not report #561 as complete until an administrator verifies the effective organization/classic rules, applies the required checks, creates the `dev` ruleset, reviews the bypass policy, and confirms the `cloudflare-production` environment controls.
+
+This PR updates repository code, workflow files, regression coverage, and this operational record. It does not modify the existing reference ruleset payloads or change live repository rulesets, classic branch protection, environment reviewers, or deployment permissions; those are GitHub administrator settings and cannot be changed through the repository contents API used for this PR.
 
 ## Branch rulesets
 

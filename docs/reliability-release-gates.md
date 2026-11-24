@@ -22,6 +22,10 @@ The repository currently provides these scripts:
 
 The quality job runs the full and production-only audits independently after dependency installation. Each result is recorded separately and a final enforcement step fails the job if either audit fails; a full-tooling advisory therefore cannot silently skip the production-only audit.
 
+The PR quality job runs the complete Vitest suite once through `npm run test:coverage`. That single execution produces both test results and V8 coverage; the separately named **Coverage baseline and thresholds** job downloads that exact report artifact, rechecks the unchanged aggregate floors (80% lines, 80% statements, 85% functions, 70% branches), and publishes the evidence without running Vitest a second time. The coverage target includes the Trades history synchronization coordinator alongside the financial domain, portfolio store, Worker, and Durable Object.
+
+The production-build job writes `dist/build-provenance.json` with the commit, ref, event, and source run ID before uploading `portfolio-terminal-dist`. On pushes or manual dispatches on `main`, a final Pages deployment job in the same `Pull Request CI` workflow waits for quality, coverage, production build, and browser journeys; it downloads the artifact from that same run, validates the embedded provenance against `github.sha` and `github.run_id`, and publishes those exact bytes. A post-publish HTTP smoke check confirms the Pages URL serves the Portfolio Terminal shell. The privileged `workflow_run` publisher was removed after zizmor correctly flagged that trigger as unsafe; publishing within the originating CI run avoids cross-workflow trust boundaries and does not repeat tests, audits, builds, or browser smoke.
+
 The primary PR CI workflow runs the production browser smoke for the application shell. Dependabot npm and GitHub Actions version-update PRs target `dev`; security-update PRs remain on the default `main` branch. The path-filtered Financial Integrity Regression workflow runs focused deterministic reference-fixture, transaction-journal, cost-basis, portfolio-store, backup/reconciliation, and Worker/authentication tests when financial, persistence, or authorization paths change. The Operations Browser Journey workflow separately exercises account, settings, guest and accessibility-sensitive journeys.
 
 The PT-17 changes extend this baseline by:
@@ -34,6 +38,8 @@ The PT-17 changes extend this baseline by:
 These automated journeys use deterministic mocked API responses. They do not prove authenticated production TradeNet behavior or live Market Depth behavior.
 
 The Trades history coordinator also records bounded in-memory operation counts, coalescing/queue counts and durations. These are local runtime diagnostics only; they are not exported to an external sink, do not contain financial/account data, and do not satisfy the PT-16 privacy approval, retention, or production observability gates.
+
+The production browser smoke includes a deterministic Trades refresh regression: cached mount stays quiet, a short explicit refresh does not flash the header indicator, a slow refresh shows it and respects the minimum visible interval, and a failed refresh preserves all displayed last-known-good rows. Unit tests additionally cover no-session work rejection, coordinator subscription lifecycle, coalescing, queued work, and failed reconciliation. These tests use synthetic TradeNet responses and do not verify live broker connectivity.
 
 ## 2. Exact-head release evidence
 
@@ -59,7 +65,7 @@ npm run audit:dependencies
 npm run audit:production
 ```
 
-The CI workflows execute these commands on pull requests. The main validation workflow also runs after merges to `dev` and `main`; deployment remains a separate `main`-branch responsibility.
+Local development may continue to use `npm test` for the full suite without coverage. CI uses `npm run test:coverage` to run that same suite once while collecting and enforcing V8 coverage. The main validation workflow also runs after merges to `dev` and `main`; Pages publication is a separate `main`-only workflow that consumes the successful CI artifact rather than rebuilding it.
 
 ## 3. Browser performance baseline
 
@@ -174,7 +180,11 @@ A failed or conflicted initial admin/guest pull is not considered a revision bas
 
 The role-based automatic refresh scheduler is configured before that first workspace pull completes. Timer-triggered, manual scheduler, and visibility-triggered quote/broker/history refresh work must remain gated until the initial authenticated workspace pull has settled. Otherwise a routine local refresh can mutate the startup snapshot while the protected cloud reconciliation is still comparing local and remote state, producing a false overlapping-change conflict. The gate is released after the initial admin or guest pull settles, including a failed pull; the existing unavailable/conflict state and revision protections remain authoritative. Already-initialized authentication transitions must also close the same gate before publishing a new account and release it after that account's admin/guest pull settles. The asynchronous daily performance-valuation capture follows the same readiness boundary: it must not change protected `performanceValuations` after the cloud pull has captured its comparison baseline. Startup mutations are coalesced and the latest local valuation is captured after the account pull settles; any resulting cloud write remains subject to the existing startup-write suppression and revision checks. The Trades desk may hydrate its separate broker/cloud-history sidecar while the portfolio pull is in flight, but its cashflow fee-allocation pass must wait until that same workspace-sync boundary settles before committing changes to canonical positions, closed trades, or the transaction journal. This prevents desk startup reconciliation from changing the protected snapshot while the cloud pull is comparing revisions.
 
-## 5. Manual release verification gates
+## 5. Deployment verification
+
+The Cloudflare Worker deployment workflow remains restricted to `refs/heads/main`, runs typecheck, Worker/authentication tests, dependency audits and Wrangler dry-run, and now injects the candidate commit as `DEPLOYMENT_SHA`. After deployment it reads the public `GET /health` contract and requires `ok=true`, service identity `trading-proxy`, and the exact expected 40-character commit SHA. The health endpoint is read-only, unauthenticated, uncached, and returns no account, broker, or credential data. The check proves that the deployed Worker version answers at its configured workers.dev hostname; it does not prove broker credentials or upstream TradeNet availability.
+
+## 6. Manual release verification gates
 
 Automated mocks are necessary but not sufficient. Mark each gate **PASS**, **FAIL**, **BLOCKED**, or **NOT APPLICABLE**, with date, candidate SHA, environment, and evidence. Never mark a gate passed if only a mocked test ran.
 
@@ -229,7 +239,7 @@ Automated mocks are necessary but not sufficient. Mark each gate **PASS**, **FAI
 - [ ] Keep the prior known-good deployment and backup/recovery procedure available.
 - [ ] Record a rollback decision/owner and verify the application remains usable if an external provider is unavailable.
 
-## 6. PR checklist
+## 7. PR checklist
 
 Use the repository PR template to record:
 - workstream and related issue;
@@ -241,7 +251,7 @@ Use the repository PR template to record:
 - browser and manual checks;
 - known limitations, skipped checks, and follow-up issues.
 
-## 7. Completion status for PT-17
+## 8. Completion status for PT-17
 
 - [x] Define reliability indicators and a baseline-collection protocol without inventing SLO thresholds.
 - [x] Add repeatable desktop/mobile unauthenticated-shell performance sampling with commit-attributed CI artifact output.
@@ -255,7 +265,7 @@ Use the repository PR template to record:
 - [ ] Collect the first 10-run baseline set and review variance before setting thresholds.
 - [ ] Implement production telemetry only after the PT-16 privacy/security review and event-sink decision.
 - [ ] Complete authenticated TradeNet and live Market Depth manual validation; this cannot be certified by mocked CI.
-## 8. CI security and pipeline hardening — 2026-11-15
+## 9. CI security and pipeline hardening — 2026-11-15
 
 ### PR validation layout
 
@@ -296,7 +306,7 @@ Vitest uses the version-matched V8 provider and uploads JSON/JSON-summary report
 Oxlint is integrated into PR CI and `npm run ci:local`. The initial enforced policy deliberately covers a small set of correctness defects (duplicate object keys, unreachable code, constant binary expressions and unsafe `finally` control flow). Test files are excluded because the repository's existing Vitest patterns use conditional assertions and flexible mock signatures that are validated by Vitest and TypeScript instead. Expand the lint rules in small, reviewed increments; do not enable broad style/pedantic presets without first auditing their impact.
 
 
-## 9. CI and configuration refinements — 2026-11-17
+## 10. CI and configuration refinements — 2026-11-17
 
 - `.nvmrc` is the shared Node.js 22 version source for GitHub Actions; `package.json` and the lockfile declare Node.js 22.x and npm 10.x as the supported runtime.
 - The path-filtered **Financial Integrity Regression** workflow gives transaction, financial-domain, persistence, backup/reconciliation, and Worker/authentication tests a dedicated status and exact-head evidence when relevant paths change. The standard PR workflow continues to run the complete Vitest suite on every PR.
@@ -315,7 +325,7 @@ Committed workflow files cannot configure GitHub branch rules or environment pro
 At the time this section was written, a coverage provider, measured baseline and lint framework were deferred. Those items have since been implemented and verified as described in section 10 below.
 
 
-## 10. Coverage, lint and repository protection follow-up — 2026-11-17
+## 11. Coverage, lint and repository protection follow-up — 2026-11-17
 
 The CI baseline is now measured and enforced. GitHub rulesets and environment-review configuration remain repository-administration settings, not file-level workflow configuration. Importable ruleset payload examples are stored in `docs/ci/github-rulesets/`; review the exact check contexts in GitHub's ruleset editor before saving.
 
