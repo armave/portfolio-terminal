@@ -1,64 +1,9 @@
 name: Financial Integrity Regression
 
+# The full PR/push quality suite already executes every test in test:financial.
+# Keep this focused subset available for a manually requested diagnostic run,
+# but do not pay for a second installation and duplicate test execution per commit.
 on:
-  pull_request:
-    branches:
-      - dev
-      - main
-    paths:
-      - 'src/domain/**'
-      - 'src/store/**'
-      - 'src/services/backupImport.ts'
-      - 'src/services/storage.ts'
-      - 'src/services/cloudSnapshotReconciliation.ts'
-      - 'src/services/cloudStateSecurity.ts'
-      - 'src/services/cloudStateSyncRuntime.ts'
-      - 'src/services/freedomTradeNet.ts'
-      - 'src/services/portfolioBrokerDataRuntime.ts'
-      - 'src/services/tradesHistorySyncRuntime.ts'
-      - 'src/services/tradesHistorySyncRuntime.test.ts'
-      - 'src/services/freedomMarketDepth.js'
-      - 'src/services/brokerAdapters/**'
-      - 'src/services/freedom-trades.ts'
-      - 'src/services/freedom-balance.ts'
-      - 'src/types/portfolio.ts'
-      - 'src/types/portfolioTransaction.ts'
-      - 'worker.js'
-      - 'state-store.js'
-      - 'worker.test.js'
-      - 'user-auth.test.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/financial-regression.yml'
-  push:
-    branches:
-      - dev
-      - main
-    paths:
-      - 'src/domain/**'
-      - 'src/store/**'
-      - 'src/services/backupImport.ts'
-      - 'src/services/storage.ts'
-      - 'src/services/cloudSnapshotReconciliation.ts'
-      - 'src/services/cloudStateSecurity.ts'
-      - 'src/services/cloudStateSyncRuntime.ts'
-      - 'src/services/freedomTradeNet.ts'
-      - 'src/services/portfolioBrokerDataRuntime.ts'
-      - 'src/services/tradesHistorySyncRuntime.ts'
-      - 'src/services/tradesHistorySyncRuntime.test.ts'
-      - 'src/services/freedomMarketDepth.js'
-      - 'src/services/brokerAdapters/**'
-      - 'src/services/freedom-trades.ts'
-      - 'src/services/freedom-balance.ts'
-      - 'src/types/portfolio.ts'
-      - 'src/types/portfolioTransaction.ts'
-      - 'worker.js'
-      - 'state-store.js'
-      - 'worker.test.js'
-      - 'user-auth.test.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/financial-regression.yml'
   workflow_dispatch:
 
 permissions:

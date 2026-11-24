@@ -3,6 +3,45 @@ import { describe, expect, it } from 'vitest';
 
 const readRepoFile = (path) => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 
+describe('change-aware CI execution', () => {
+  it('keeps documentation-only changes away from application jobs but retains secret scanning', () => {
+    const ci = readRepoFile('.github/workflows/ci.yml');
+    const security = readRepoFile('.github/workflows/security.yml');
+    expect(ci).toContain("needs.detect-changes.outputs.run_quality == 'true'");
+    expect(ci).toContain("needs.detect-changes.outputs.run_browser == 'true'");
+    expect(security).toContain('name: New-commit secret scan');
+    expect(security).toContain("if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}");
+  });
+
+  it('keeps financial regression automatically covered by the single full Vitest run', () => {
+    const financial = readRepoFile('.github/workflows/financial-regression.yml');
+    const local = readRepoFile('scripts/ci-local.mjs');
+    expect(financial).toContain('workflow_dispatch:');
+    expect(financial).not.toContain('pull_request:');
+    expect(financial).not.toContain('push:');
+    expect(local).toContain("npm('run', 'test:coverage')");
+    expect(local).not.toContain("npm('test')");
+  });
+
+  it('does not request or consume coverage artifacts when the full Vitest run fails', () => {
+    const ci = readRepoFile('.github/workflows/ci.yml');
+    expect(ci).toContain("if: steps.tests.outcome == 'success'");
+    expect(ci).toContain("needs.quality.result == 'success'");
+  });
+
+  it('defaults change detection to full validation and preserves release deployment gates', () => {
+    const classifier = readRepoFile('scripts/ci-change-classifier.mjs');
+    const detector = readRepoFile('scripts/ci-change-detection.mjs');
+    expect(classifier).toContain("classification: 'conservative-full'");
+    expect(classifier).toContain('runBrowser: true');
+    expect(detector).toContain('forceFullValidation = true');
+    expect(detector).toContain('result.length !== expectedCount');
+    expect(detector).toContain('/compare/');
+    expect(detector).toContain('comparison.files.length >= 300');
+    expect(detector).toContain('comparison.total_commits !== pushedCommits.length');
+  });
+});
+
 describe('production deployment security gates', () => {
   it('accepts only a successful security workflow run for the exact main push commit', () => {
     const script = readRepoFile('.github/scripts/require-main-push-security-success.sh');
