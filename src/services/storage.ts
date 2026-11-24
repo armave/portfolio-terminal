@@ -414,7 +414,8 @@ function queuePortfolioStateRecoveryWrite(
  * after the account-scoped IndexedDB transaction has committed both records.
  */
 export function initializePortfolioStateRecoveryStorage(
-  scope = activePortfolioStorageScope
+  scope = activePortfolioStorageScope,
+  options: { migrateLegacy?: boolean } = {}
 ): Promise<void> {
   if (scope !== activePortfolioStorageScope) {
     return Promise.reject(new Error('Cannot initialize portfolio recovery for an inactive storage scope.'));
@@ -428,10 +429,19 @@ export function initializePortfolioStateRecoveryStorage(
     const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope);
     let localCurrent: Record<string, unknown> | null = null;
     let localRecovery: Record<string, unknown> | null = null;
+    let legacyCurrent: Record<string, unknown> | null = null;
+    let legacyRecovery: Record<string, unknown> | null = null;
+    let legacyFallback: Record<string, unknown> | null = null;
+    const migrateLegacy = options.migrateLegacy === true && scope === 'owner';
     if (storage) {
       try {
         localCurrent = parseJsonRecord(storage.getItem(canonicalKey));
         localRecovery = parseJsonRecord(storage.getItem(recoveryKey));
+        if (migrateLegacy) {
+          legacyCurrent = parseJsonRecord(storage.getItem(STORAGE_KEY_STATE));
+          legacyRecovery = parseJsonRecord(storage.getItem(STORAGE_KEY_STATE_RECOVERY));
+          legacyFallback = parseJsonRecord(storage.getItem(STORAGE_KEY_LEGACY_STATE));
+        }
       } catch (error) {
         logSafeDiagnostic('warn', 'browser-storage', error);
       }
@@ -443,15 +453,12 @@ export function initializePortfolioStateRecoveryStorage(
     } catch (error) {
       // IndexedDB may be blocked or unavailable. Preserve the local recovery
       // copy and keep it readable; do not claim storage has been reclaimed.
-      const fallback = localCurrent ?? localRecovery;
+      const fallback = selectNewestPortfolioStateSnapshots([
+        localCurrent, localRecovery, legacyCurrent, legacyRecovery, legacyFallback
+      ]).current;
       if (fallback) portfolioStateSnapshotCacheByScope.set(scope, fallback);
-      if (storage && localCurrent && !localRecovery) {
-        try {
-          storage.setItem(recoveryKey, JSON.stringify(localCurrent));
-        } catch {
-          // A full localStorage quota must not block authenticated workspace startup.
-        }
-      }
+      // Keep all original local/legacy rows when IndexedDB is unavailable.
+      // Do not create a second full-size localStorage copy in a quota-limited profile.
       logSafeDiagnostic('warn', 'browser-storage', error);
       return;
     }
@@ -460,7 +467,10 @@ export function initializePortfolioStateRecoveryStorage(
       localCurrent,
       indexed.current,
       localRecovery,
-      indexed.recovery
+      indexed.recovery,
+      legacyCurrent,
+      legacyRecovery,
+      legacyFallback
     ]);
     const current = selected.current;
     if (!current) {
@@ -483,35 +493,34 @@ export function initializePortfolioStateRecoveryStorage(
         await writePortfolioStateRecoveryRecordsToIndexedDB(current, recovery, scope, resetRecovery);
       }
     } catch (error) {
-      // The existing local recovery copy is removed only after this commit.
+      // Keep every existing local and legacy source until both IndexedDB rows commit.
       portfolioStateSnapshotCacheByScope.set(scope, current);
-      if (storage && recovery === current) {
-        try {
-          if (!parseJsonRecord(storage.getItem(recoveryKey))) {
-            storage.setItem(recoveryKey, JSON.stringify(current));
-          }
-        } catch {
-          // The indexedDB copy remains the preferred recovery path when present.
-        }
-      }
       logSafeDiagnostic('warn', 'browser-storage', error);
       return;
     }
 
     portfolioStateSnapshotCacheByScope.set(scope, current);
     if (storage) {
+      // IndexedDB now holds the selected current and last-known-good records.
+      // Remove pre-scope duplicates before repairing the scoped active key to
+      // reclaim quota without risking the last recoverable portfolio copy.
+      try {
+        storage.removeItem(recoveryKey);
+        if (migrateLegacy) {
+          storage.removeItem(STORAGE_KEY_STATE);
+          storage.removeItem(STORAGE_KEY_STATE_RECOVERY);
+          storage.removeItem(STORAGE_KEY_LEGACY_STATE);
+        }
+      } catch (error) {
+        logSafeDiagnostic('warn', 'browser-storage', error);
+      }
       try {
         const rawCurrent = parseJsonRecord(storage.getItem(canonicalKey));
         const newest = selectNewestPortfolioStateSnapshots([rawCurrent, current]).current;
         if (newest && newest !== rawCurrent) storage.setItem(canonicalKey, JSON.stringify(newest));
       } catch (error) {
-        // This can still fail when even one active copy exceeds localStorage quota.
-        // The validated IndexedDB snapshot remains available to this session.
-        logSafeDiagnostic('warn', 'browser-storage', error);
-      }
-      try {
-        storage.removeItem(recoveryKey);
-      } catch (error) {
+        // The validated IndexedDB snapshot and in-memory cache remain available
+        // if one active localStorage snapshot still cannot be written.
         logSafeDiagnostic('warn', 'browser-storage', error);
       }
     }
@@ -861,7 +870,7 @@ async function activatePortfolioStorageScopeNow(
   await (portfolioStateRecoveryWriteQueuesByScope.get(nextScope) ?? Promise.resolve(true)).catch(() => false);
 
   if (previousScope === nextScope) {
-    await initializePortfolioStateRecoveryStorage(nextScope);
+    await initializePortfolioStateRecoveryStorage(nextScope, options);
     await initializeSavedHistoryStorage(nextScope);
     return;
   }
@@ -880,7 +889,7 @@ async function activatePortfolioStorageScopeNow(
     }
     activePortfolioStorageScope = nextScope;
     resetHistoryStorageCache();
-    await initializePortfolioStateRecoveryStorage(nextScope);
+    await initializePortfolioStateRecoveryStorage(nextScope, options);
     await initializeSavedHistoryStorage(nextScope);
     return;
   }
@@ -898,7 +907,7 @@ async function activatePortfolioStorageScopeNow(
     }
     activePortfolioStorageScope = nextScope;
     resetHistoryStorageCache();
-    await initializePortfolioStateRecoveryStorage(nextScope);
+    await initializePortfolioStateRecoveryStorage(nextScope, options);
     await initializeSavedHistoryStorage(nextScope);
     return;
   }
@@ -906,30 +915,24 @@ async function activatePortfolioStorageScopeNow(
   if (!storage) throw new Error('Browser storage is unavailable; the account workspace was not switched.');
 
   if (options.migrateLegacy && nextScope === 'owner') {
-    const targetStateKey = scopedStorageKey(STORAGE_KEY_STATE, nextScope);
-    const targetRecoveryStateKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, nextScope);
+    // Do not copy another multi-megabyte state into localStorage here. The
+    // account-scoped recovery initializer imports legacy/current/recovery
+    // candidates directly into IndexedDB after the active scope is switched.
     const targetStateIsValid = Boolean(
-      parseJsonRecord(storage.getItem(targetStateKey)) ||
-      parseJsonRecord(storage.getItem(targetRecoveryStateKey))
+      parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_STATE, nextScope))) ||
+      parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, nextScope)))
     );
-    if (!targetStateIsValid) {
-      const legacyState = storage.getItem(STORAGE_KEY_STATE) ?? storage.getItem(STORAGE_KEY_LEGACY_STATE);
-      if (legacyState && parseJsonRecord(legacyState)) {
-        storage.setItem(targetStateKey, legacyState);
-      } else {
-        const legacyRecovery = storage.getItem(STORAGE_KEY_STATE_RECOVERY);
-        if (legacyRecovery && parseJsonRecord(legacyRecovery)) {
-          storage.setItem(targetRecoveryStateKey, legacyRecovery);
-        } else if (legacyState) {
-          throw new Error('The legacy administrator snapshot is not a valid object; its source was left untouched.');
-        }
-      }
-      if (!parseJsonRecord(storage.getItem(targetRecoveryStateKey))) {
-        const legacyRecovery = storage.getItem(STORAGE_KEY_STATE_RECOVERY);
-        if (legacyRecovery && parseJsonRecord(legacyRecovery)) {
-          storage.setItem(targetRecoveryStateKey, legacyRecovery);
-        }
-      }
+    const legacyCurrent = storage.getItem(STORAGE_KEY_STATE);
+    const legacyRecovery = storage.getItem(STORAGE_KEY_STATE_RECOVERY);
+    const legacyFallback = storage.getItem(STORAGE_KEY_LEGACY_STATE);
+    const hasLegacyPayload = legacyCurrent !== null || legacyRecovery !== null || legacyFallback !== null;
+    const hasValidLegacySnapshot = Boolean(
+      parseJsonRecord(legacyCurrent) ||
+      parseJsonRecord(legacyRecovery) ||
+      parseJsonRecord(legacyFallback)
+    );
+    if (!targetStateIsValid && hasLegacyPayload && !hasValidLegacySnapshot) {
+      throw new Error('The legacy administrator snapshot is not a valid object; its source was left untouched.');
     }
 
     const targetRulesKey = scopedStorageKey(STORAGE_KEY_RULES, nextScope);
@@ -977,7 +980,7 @@ async function activatePortfolioStorageScopeNow(
 
   activePortfolioStorageScope = nextScope;
   resetHistoryStorageCache();
-  await initializePortfolioStateRecoveryStorage(nextScope);
+  await initializePortfolioStateRecoveryStorage(nextScope, options);
   await initializeSavedHistoryStorage(nextScope);
 }
 
