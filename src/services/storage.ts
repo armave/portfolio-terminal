@@ -1083,11 +1083,6 @@ export function markFreedomCashflowTradeCheckpoint(accountId: string, checkpoint
   }
 }
 
-/** Removes related legacy keys together so credential cleanup follows one path. */
-function removeStoredKeys(storage: Storage, keys: string[]): void {
-  keys.forEach((key) => storage.removeItem(key));
-}
-
 export {
   obfuscateSecret,
   deobfuscateSecret,
