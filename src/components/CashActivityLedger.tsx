@@ -6,6 +6,9 @@ import type { CashflowCategory, PortfolioTransactionEvent } from '../types/portf
 import { classifyCashflow, hasKnownCashflowDirection, normalizeClassifiedCashflowAmount } from '../domain/cashflowClassification';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { formatUSD } from '../utils/formatters';
+import { TablePagination } from './TablePagination';
+import { TableScrollRegion } from './TableScrollRegion';
+import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
 
 interface CashActivityLedgerProps {
   accountId: string;
@@ -248,6 +251,8 @@ export function CashActivityLedger({
       return true;
     });
   }, [rows, search, categoryFilter, periodFilter]);
+  const pagination = useTablePagination('cash-activity', filteredRows.length, 10);
+  const visibleRows = sliceTablePage(filteredRows, pagination.currentPage, pagination.pageSize);
 
   const usdRows = filteredRows.filter(row => row.quality === 'verified' && row.currency === 'USD' && row.signedCash !== null);
   const knownInflows = usdRows.reduce((sum, row) => sum + Math.max(0, row.signedCash || 0), 0);
@@ -400,13 +405,13 @@ export function CashActivityLedger({
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {translateText('Search activity', getAppLanguage())}
-            <input value={search} onInput={event => setSearch((event.currentTarget as HTMLInputElement).value)}
+            <input value={search} onInput={event => { setSearch((event.currentTarget as HTMLInputElement).value); pagination.setPage(1); }}
               placeholder={translateText('Description, reference or type', getAppLanguage())}
               class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100" />
           </label>
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {translateText('Category', getAppLanguage())}
-            <select value={categoryFilter} onChange={event => setCategoryFilter((event.currentTarget as HTMLSelectElement).value)}
+            <select value={categoryFilter} onChange={event => { setCategoryFilter((event.currentTarget as HTMLSelectElement).value); pagination.setPage(1); }}
               class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100">
               <option value="all">{translateText('All categories', getAppLanguage())}</option>
               {Array.from(new Set(rows.map(row => row.category))).sort().map(category =>
@@ -416,7 +421,7 @@ export function CashActivityLedger({
           </label>
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {translateText('Period', getAppLanguage())}
-            <select value={periodFilter} onChange={event => setPeriodFilter((event.currentTarget as HTMLSelectElement).value)}
+            <select value={periodFilter} onChange={event => { setPeriodFilter((event.currentTarget as HTMLSelectElement).value); pagination.setPage(1); }}
               class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100">
               <option value="all">{translateText('All time', getAppLanguage())}</option>
               <option value="30">{translateText('Last 30 days', getAppLanguage())}</option>
@@ -431,32 +436,78 @@ export function CashActivityLedger({
           <span>{translateText('Known net cash movement', getAppLanguage())}: {currencyAmount(knownInflows - knownOutflows, knownInflows >= knownOutflows ? '+' : '−')}</span>
         </div>
 
-        <div class="mt-3 space-y-2">
-          {filteredRows.length === 0 ? (
-            <p class="rounded border border-slate-800 px-3 py-8 text-center text-xs text-slate-500">{translateText('No cash activity matches these filters.', getAppLanguage())}</p>
-          ) : filteredRows.map(row => {
-            const signedDisplay = row.debtOnly
-              ? (row.amount === null ? null : -row.amount)
-              : row.signedCash;
-            const isInflow = signedDisplay !== null && signedDisplay >= 0;
-            return (
-              <article key={row.id} class="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 rounded border border-slate-800/80 bg-slate-950/60 p-3 sm:grid-cols-[minmax(8rem,1.1fr)_minmax(12rem,2fr)_minmax(7rem,0.8fr)_auto] sm:items-center">
-                <div class="min-w-0">
-                  <p class="text-[10px] text-slate-500">{formatDate(row.timestamp)}</p>
-                  <p class="mt-0.5 text-xs font-semibold text-slate-200">{categoryLabel(row.category)}</p>
-                </div>
-                <div class="min-w-0 sm:col-auto">
-                  <p class="break-words text-xs text-slate-300">{row.description}</p>
-                  <p class="mt-1 text-[10px] text-slate-500">{row.source} · {row.quality === 'verified' ? translateText('Provider ID / app record', getAppLanguage()) : row.quality === 'provisional' ? translateText('Provisional source identity', getAppLanguage()) : translateText('Unclassified source row', getAppLanguage())}</p>
-                </div>
-                <p class="text-[10px] text-slate-500">{row.currency || '—'}{row.debtOnly ? ' · ' + translateText('Debt only', getAppLanguage()) : ''}</p>
-                <p class={'text-right font-mono text-sm font-semibold tabular-nums ' + (signedDisplay === null ? 'text-amber-300' : isInflow ? 'text-emerald-300' : 'text-rose-300')}>
-                  {signedDisplay === null ? '—' : (isInflow ? '+' : '−') + formatMoney(signedDisplay, row.currency)}
-                </p>
-              </article>
-            );
-          })}
-        </div>
+        {filteredRows.length === 0 ? (
+          <p class="mt-3 rounded border border-slate-800 px-3 py-8 text-center text-xs text-slate-500">{translateText('No cash activity matches these filters.', getAppLanguage())}</p>
+        ) : (
+          <>
+            <TableScrollRegion
+              label={translateText('Cash activity records', getAppLanguage())}
+              className="mt-3"
+            >
+              <table class="min-w-[56rem] w-full border-collapse text-left text-xs">
+                <thead class="bg-slate-900/80 text-[10px] uppercase tracking-wide text-slate-400">
+                  <tr>
+                    <th scope="col" class="whitespace-nowrap px-3 py-2.5 font-semibold">{translateText('Activity date', getAppLanguage())}</th>
+                    <th scope="col" class="whitespace-nowrap px-3 py-2.5 font-semibold">{translateText('Category', getAppLanguage())}</th>
+                    <th scope="col" class="px-3 py-2.5 font-semibold">{translateText('Description', getAppLanguage())}</th>
+                    <th scope="col" class="whitespace-nowrap px-3 py-2.5 font-semibold">{translateText('Source / quality', getAppLanguage())}</th>
+                    <th scope="col" class="whitespace-nowrap px-3 py-2.5 font-semibold">{translateText('Currency', getAppLanguage())}</th>
+                    <th scope="col" class="whitespace-nowrap px-3 py-2.5 text-right font-semibold">{translateText('Cash / debt impact', getAppLanguage())}</th>
+                  </tr>
+                </thead>
+                <tbody id="cashActivityTable" class="divide-y divide-slate-800/80 bg-slate-950/40">
+                  {visibleRows.map(row => {
+                    const signedDisplay = row.debtOnly
+                      ? (row.amount === null ? null : -row.amount)
+                      : row.signedCash;
+                    const isInflow = signedDisplay !== null && signedDisplay >= 0;
+                    const amountTone = signedDisplay === null
+                      ? 'text-amber-300'
+                      : isInflow ? 'text-emerald-300' : 'text-rose-300';
+                    const qualityLabel = row.quality === 'verified'
+                      ? 'Provider ID / app record'
+                      : row.quality === 'provisional'
+                        ? 'Provisional source identity'
+                        : 'Unclassified source row';
+                    return (
+                      <tr key={row.id} class="align-top transition-colors hover:bg-slate-900/40">
+                        <td class="whitespace-nowrap px-3 py-3 text-slate-400">{formatDate(row.timestamp)}</td>
+                        <td class="whitespace-nowrap px-3 py-3 font-semibold text-slate-200">{categoryLabel(row.category)}</td>
+                        <td class="max-w-[28rem] whitespace-normal px-3 py-3 text-slate-300">
+                          <p class="break-words">{row.description}</p>
+                        </td>
+                        <td class="whitespace-nowrap px-3 py-3">
+                          <p class="text-slate-300">{row.source}</p>
+                          <p class="mt-1 text-[10px] text-slate-500">{translateText(qualityLabel, getAppLanguage())}</p>
+                        </td>
+                        <td class="whitespace-nowrap px-3 py-3 text-slate-400">
+                          {row.currency || '—'}
+                          {row.debtOnly && <p class="mt-1 text-[10px] text-slate-500">{translateText('Debt only', getAppLanguage())}</p>}
+                        </td>
+                        <td class={'whitespace-nowrap px-3 py-3 text-right font-mono text-sm font-semibold tabular-nums ' + amountTone}>
+                          {signedDisplay === null ? '—' : (isInflow ? '+' : '−') + formatMoney(signedDisplay, row.currency)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </TableScrollRegion>
+            <TablePagination
+              tableLabel={translateText('Cash Activity ledger', getAppLanguage())}
+              page={pagination.currentPage}
+              pageCount={pagination.pageCount}
+              pageSize={pagination.pageSize}
+              start={pagination.start}
+              end={pagination.end}
+              total={filteredRows.length}
+              onPageChange={pagination.setPage}
+              onPageSizeChange={pagination.setPageSize}
+              className="mt-1"
+              controlsId="cashActivityTable"
+            />
+          </>
+        )}
       </div>
     </section>
   );
