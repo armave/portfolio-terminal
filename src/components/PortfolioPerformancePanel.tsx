@@ -26,6 +26,7 @@ const PERFORMANCE_RU_COPY: Record<string, string> = {
   "Cumulative return": "Накопленная доходность",
   "Income and costs": "Доходы и расходы",
   "Dividends": "Дивиденды",
+  "Interest income": "Процентный доход",
   "Fees": "Сборы",
   "Commissions": "Комиссии",
   "Interest": "Проценты",
@@ -214,9 +215,10 @@ export function PortfolioPerformancePanel() {
           {report.incomeCosts?.status !== 'unavailable' && report.incomeCosts && (
             <div class="mt-4">
               <h4 class="text-xs font-semibold text-slate-200">{label('Income and costs')}</h4>
-              <div class="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-5">
+              <div class="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3 xl:grid-cols-6">
                 {([
                   ['Dividends', report.incomeCosts.value.dividends],
+                  ['Interest income', report.incomeCosts.value.interestIncome],
                   ['Fees', -report.incomeCosts.value.fees],
                   ['Commissions', -report.incomeCosts.value.commissions],
                   ['Interest', -report.incomeCosts.value.interest],

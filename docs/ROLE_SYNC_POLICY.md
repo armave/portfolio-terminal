@@ -29,6 +29,10 @@ Automatic synchronization is mandatory for authenticated accounts. Settings stor
 - The guest Balance desk does not show a shared-portfolio scope notice, a separate data-health panel, or a dedicated refresh action. Automatic guest quote and projection refresh schedules remain unchanged.
 - Individual stock cards continue to display quote source and available provider quote context. Receipt time alone must not be used to promote an unknown or stale provider quote to fresh.
 
+## Cash Activity role boundary
+
+Cash Activity and its manual-entry form are rendered only in the administrator Trades desk. Broker cashflows remain audit evidence; manual USD activity uses the existing shared portfolio persistence path. This is not broker-side writeback. Guest sessions continue to use the guest holdings/history projection and do not load the administrator Closed History record.
+
 ## Visibility and account isolation
 
 The scheduler pauses while the document is hidden and performs a fresh role-scoped sync when the app becomes visible again. Changing account role replaces the previous role's timers. Session guards prevent late broker, cashflow, or guest responses from being applied to a different account. Automatic and manual operations use the same role-specific source boundaries.

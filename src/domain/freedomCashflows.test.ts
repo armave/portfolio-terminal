@@ -62,14 +62,28 @@ describe("Freedom cashflow normalization", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0].id.startsWith("freedom-")).toBe(true);
-    expect(isFreedomCashflowRow(rows[0])).toBe(true);
+    expect(rows[0].identityQuality).toBe('fallback');
+    expect(isFreedomCashflowRow(rows[0])).toBe(false);
   });
 
   it("does not treat legacy file-import IDs as broker fee sources", () => {
     expect(isFreedomCashflowRow({ id: "freedom-4812" })).toBe(true);
+    expect(isFreedomCashflowRow({ id: "freedom-2026-11-03|margin fee|-1.00000000|usd|fee", identityQuality: 'fallback' })).toBe(false);
     expect(isFreedomCashflowRow({ id: "cashflow-legacy-workbook-row" })).toBe(false);
   });
 
+  it("preserves duplicate-looking rows without provider IDs as separate provisional observations", () => {
+    const rows = normalizeFreedomCashflowRows({
+      cashflows: [
+        { date: "2026-11-03", type: "Dividend", amount: 5, currency: "USD", description: "Distribution" },
+        { date: "2026-11-03", type: "Dividend", amount: 5, currency: "USD", description: "Distribution" }
+      ]
+    });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].id).not.toBe(rows[1].id);
+    expect(rows.every(row => row.identityQuality === 'fallback')).toBe(true);
+    expect(normalizeSavedFreedomCashflows(rows).every(row => row.identityQuality === 'fallback')).toBe(true);
+  });
   it("accepts a confirmed empty cashflow collection", () => {
     expect(normalizeFreedomCashflowRows({ data: { cashflows: [] } })).toEqual([]);
   });

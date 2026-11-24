@@ -237,6 +237,7 @@ describe('summarizePerformanceIncomeAndCosts', () => {
   it('reports dividends and costs separately without changing return cash-flow treatment', () => {
     const result = summarizePerformanceIncomeAndCosts([
       { timestamp: 1, type: 'dividend', amount: 20, currency: 'USD', quality: 'current' },
+      { timestamp: 1.5, type: 'interestIncome', amount: 1.5, currency: 'USD', quality: 'current' },
       { timestamp: 2, type: 'fee', amount: 2, currency: 'USD', quality: 'current' },
       { timestamp: 3, type: 'commission', amount: 3, currency: 'USD', quality: 'current' },
       { timestamp: 4, type: 'interest', amount: 4, currency: 'USD', quality: 'current' }
@@ -246,11 +247,27 @@ describe('summarizePerformanceIncomeAndCosts', () => {
       expect(result.value).toEqual({
         currency: 'USD',
         dividends: 20,
+        interestIncome: 1.5,
         fees: 2,
         commissions: 3,
         interest: 4,
-        netIncomeAndCosts: 11
+        netIncomeAndCosts: 12.5
       });
+    }
+  });
+
+  it('nets broker fee refunds against the matching cost bucket', () => {
+    const result = summarizePerformanceIncomeAndCosts([
+      { timestamp: 1, type: 'commission', amount: 5, currency: 'USD', quality: 'current' },
+      { timestamp: 2, type: 'commission', amount: 2, currency: 'USD', quality: 'current', refund: true },
+      { timestamp: 3, type: 'interest', amount: 3, currency: 'USD', quality: 'current' },
+      { timestamp: 4, type: 'interest', amount: 1, currency: 'USD', quality: 'current', refund: true }
+    ], 'USD');
+    expect(result.status).toBe('available');
+    if (result.status !== 'unavailable') {
+      expect(result.value.commissions).toBe(3);
+      expect(result.value.interest).toBe(2);
+      expect(result.value.netIncomeAndCosts).toBe(-5);
     }
   });
 

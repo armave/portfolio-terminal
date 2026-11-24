@@ -50,3 +50,14 @@ Cloud workspace checkpoints read the current canonical state without committing 
 The global Cloud indicator and the Trades foreground TradeNet refresh use the same presentation-only `OperationActivityIndicator`. Their state owners remain separate: cloud workspace sync is sourced from cloud sync status, while the Trades indicator is sourced only from the matching broker execution-history refresh request. Cashflow reconciliation, fee recalculation and quiet cloud-history hydration do not drive the Trades spinner.
 
 Both workspace indicators use the shared 700 ms appearance delay and 650 ms minimum visible duration. The lower-level delayed-visibility controller retains its 400 ms default for other callers. The shared component does not schedule, coalesce or perform synchronization work.
+
+
+## Cash Activity workspace
+
+Trades has two views: **Closed trades** and **Cash Activity**. The Cash Activity view reads the canonical store's normalized broker cashflows and app-owned cash/debt journal events; it does not start its own provider requests or create a parallel cash state.
+
+The header remains linked to the existing broker-history/cashflow synchronization owner. Selecting Cash Activity is not itself a refresh. Opening the tab is not blocked by the foreground Trades execution-history loader; that loader remains scoped to the Closed trades view.
+
+The ledger supports search, category and period filters, verified USD inflow/outflow summaries, and an admin-only manual entry form. Provisional and unclassified source rows remain visible with a quality label, but are excluded from verified USD totals. Non-USD rows are visible and excluded from those totals. Manual outflows reject when current available USD cash is insufficient; they do not create margin borrowing. Margin interest is a separate explicit debt-capitalization category.
+
+English and Russian copy is routed through the existing localization dictionaries. The ledger is responsive: summary cards collapse to two columns on narrow screens, manual entry controls become one column, and activity rows reflow into stacked mobile cards.

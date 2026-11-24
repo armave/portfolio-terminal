@@ -5,10 +5,12 @@ import {
   type PortfolioTransactionDraft,
   type PortfolioTransactionEvent,
   type PortfolioTransactionEventType,
+  type CashflowCategory,
   type PortfolioTransactionLotAllocation,
   type PortfolioTransactionHistoryFeeSnapshot,
   type PortfolioCorporateActionLotAdjustment
 } from '../types/portfolioTransaction';
+import { classifyCashflow, normalizeClassifiedCashflowAmount } from './cashflowClassification';
 
 const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
   'trade.buy',
@@ -26,6 +28,7 @@ const EVENT_TYPES = new Set<PortfolioTransactionEventType>([
   'cash.adjustment',
   'cash.transfer',
   'dividend',
+  'interest.income',
   'fee',
   'margin.adjustment',
   'margin.interest',
@@ -131,6 +134,8 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (typeof value.id !== 'string' || !value.id.trim()) return false;
   if (value.schemaVersion !== PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION) return false;
   if (typeof value.type !== 'string' || !EVENT_TYPES.has(value.type as PortfolioTransactionEventType)) return false;
+  const cashflowCategories = new Set<CashflowCategory>(['deposit','withdrawal','dividend','interest_income','commission','fee','tax','margin_interest','transfer','adjustment','correction','corporate_action','unclassified']);
+  if (value.cashflowCategory !== undefined && (typeof value.cashflowCategory !== 'string' || !cashflowCategories.has(value.cashflowCategory as CashflowCategory))) return false;
   if (!isPlainRecord(value.actor) ||
     typeof value.actor.type !== 'string' ||
     !ACTOR_TYPES.has(value.actor.type as PortfolioTransactionActorType)) return false;
@@ -399,6 +404,7 @@ export function createPortfolioTransactionEvent(
     id: context.eventId?.trim() || createEventId(),
     schemaVersion: PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION,
     type: draft.type,
+    ...(draft.cashflowCategory ? { cashflowCategory: draft.cashflowCategory } : {}),
     actor: {
       type: actorType,
       ...(actorId ? { id: actorId } : {})
@@ -1220,44 +1226,24 @@ export function appendBrokerHistoryAuditEvents(
     if (amountValue === null || amountValue === undefined || amountValue === '') continue;
     const amount = Number(amountValue);
     if (!Number.isFinite(amount)) continue;
-    const text = [raw.type, raw.description, raw.category].filter((v) => typeof v === 'string').join(' ').toLowerCase();
-    const isCorporateAction = ['stock split', 'reverse split', 'merger', 'spin-off', 'spin off', 'reorganization', 'reorganisation', 'corporate action', 'symbol change', 'cash in lieu'].some((keyword) => text.includes(keyword));
-    // A margin adjustment does not establish an interest charge or signed debt movement.
-    const isAmbiguousMarginAdjustment = /\bmargin\b.{0,32}\badjustment\b|\badjustment\b.{0,32}\bmargin\b/.test(text);
-    const isExplicitMarginInterest = /\binterest\b|\bfinancing\b|\bborrow fee\b|\bmargin[\s-]+fee\b/.test(text);
-    const isAmbiguousMarginLabel = /\bmargin\b/.test(text) && !isExplicitMarginInterest;
-    const type: PortfolioTransactionEventType | null = text.includes('dividend') || text.includes('distribution') || text.includes('coupon')
-      ? 'dividend'
-      : isCorporateAction
-        ? 'corporate-action'
-        : isAmbiguousMarginAdjustment || isAmbiguousMarginLabel
-          ? null
-          : isExplicitMarginInterest
-            ? 'margin.interest'
-          : text.includes('fee') || text.includes('commission') || text.includes('charge') || text.includes('tax')
-            ? 'fee'
-            : text.includes('transfer') ? 'cash.transfer'
-              : text.includes('withdraw') || text.includes('debit') || amount < 0 && text.includes('outflow')
-                ? 'cash.withdrawal'
-                : text.includes('deposit') || text.includes('funding') || text.includes('credit')
-                  ? 'cash.deposit'
-                  : /\badjustment\b|\bcorrection\b/.test(text)
-                    ? 'cash.adjustment'
-                    : null;
+    const classification = classifyCashflow({
+      type: raw.type, description: raw.description, category: raw.category,
+      raw: isPlainRecord(raw.raw) ? raw.raw : undefined
+    });
+    const type = classification.eventType;
+    const category = classification.category;
     // Unknown/provider-specific labels remain in the source cashflow history
     // and are reported as unclassified by PT-04. Never invent a cash adjustment.
     if (!type) continue;
-    const isRefund = /refund|rebate|reversal|reversed/.test(text);
-    const signedAmount = type === 'cash.deposit'
-      ? Math.abs(amount)
-      : ['cash.withdrawal', 'fee', 'margin.interest'].includes(type)
-        ? isRefund ? Math.abs(amount) : -Math.abs(amount)
-        : amount;
+    const classificationText = [raw.type, raw.description, raw.category,
+      ...(isPlainRecord(raw.raw) ? Object.values(raw.raw) : [])]
+      .filter((value) => typeof value === 'string').join(' ');
+    const signedAmount = normalizeClassifiedCashflowAmount(category, amount, classificationText);
     const date = raw.date;
     const currency = validCurrency(raw.currency);
-    const fallback = hash(JSON.stringify([date, type, signedAmount, currency, raw.description]));
+    const fallback = hash(JSON.stringify([type, category, date, signedAmount, currency, raw.type, raw.description]));
     const ref = sourceId(raw.id, fallback);
-    const facts = JSON.stringify([type, date, signedAmount, currency, raw.description]);
+    const facts = JSON.stringify([type, category, date, signedAmount, currency, raw.type, raw.description]);
     const fingerprint = hash(facts);
     const cashflowSource = `${source}-cashflow`;
     const sourceKey = `${cashflowSource}:${ref}`;
@@ -1268,7 +1254,7 @@ export function appendBrokerHistoryAuditEvents(
     if (previous?.requestFingerprint === requestFingerprint) continue;
     const revisionParent = previous ? hash(previous.id) : 'initial';
     const event = createPortfolioTransactionEvent({
-      type, effectiveAt: timestamp(date, recordedAt), currency, externalReferenceId: ref,
+      type, cashflowCategory: category, effectiveAt: timestamp(date, recordedAt), currency, externalReferenceId: ref,
       externalCashFlowAmount: signedAmount, grossAmount: Math.abs(signedAmount),
       ...(type === 'fee' ? { fees: Math.abs(signedAmount) } : {}),
       ...(type === 'margin.interest' ? { financingCost: Math.abs(signedAmount) } : {}),

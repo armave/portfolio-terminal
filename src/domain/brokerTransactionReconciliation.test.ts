@@ -831,6 +831,39 @@ describe('reconcileBrokerActivity', () => {
     }));
   });
 
+
+  it('detects a signed-direction mismatch for credited interest', () => {
+    const brokerInterest = cashflow({
+      id: 'interest-flow-1', type: 'Interest income', amount: 5,
+      description: 'Credited interest'
+    });
+    const appInterest = createPortfolioTransactionEvent({
+      type: 'interest.income', cashflowCategory: 'interest_income', effectiveAt: at,
+      currency: 'USD', grossAmount: 5, cashDelta: -5
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-interest-1', recordedAt: at });
+    const report = reconcile([], [appInterest], { brokerCashflows: [brokerInterest] });
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_direction_mismatch',
+      appEventIds: ['app-interest-1'],
+      brokerReferences: ['interest-flow-1']
+    }));
+    expect(report.matchedCashflowCount).toBe(0);
+  });
+
+  it('reports a category mismatch even when both cashflows share the fee event type', () => {
+    const brokerTax = cashflow({
+      id: 'tax-cashflow-1', type: 'Tax withheld', amount: -4, description: 'Withholding tax'
+    });
+    const appCommission = createPortfolioTransactionEvent({
+      type: 'fee', cashflowCategory: 'commission', effectiveAt: at, currency: 'USD',
+      grossAmount: 4, fees: 4, externalCashFlowAmount: -4
+    }, { actor: { type: 'user' }, source: 'manual', eventId: 'app-commission-1', recordedAt: at });
+    const report = reconcile([], [appCommission], { brokerCashflows: [brokerTax] });
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_type_mismatch', appEventIds: ['app-commission-1'], brokerReferences: ['tax-cashflow-1']
+    }));
+  });
+
   it('leaves equally close app cashflow candidates ambiguous and independent of input order', () => {
     const brokerCashflow: BrokerCashflow = {
       id: 'ambiguous-fee-1', date: new Date(at).toISOString(), type: 'Fee',
