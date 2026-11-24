@@ -2,7 +2,9 @@
 
 ## Status
 
-Implemented in the client feature branch; exact-head GitHub Actions, PR review and release verification are still pending. This document describes the code path being delivered, not a production deployment certification.
+**Production release verified — 2026-11-24.** The Cash Activity feature was merged through [PR #720](https://github.com/armave/portfolio-terminal/pull/720) to `dev`, then promoted through [PR #721](https://github.com/armave/portfolio-terminal/pull/721) to `main`. Production `main` is at `2cad42ae551ff192d34e409258b1d0baa1e25698`. The same-run GitHub Pages artifact passed provenance validation, same-commit security validation, deployment and the published-site HTTP smoke check at [the production app](https://armave.github.io/portfolio-terminal/).
+
+This confirms the application release path and published shell. CI browser journeys use deterministic fixtures; it does not certify live authenticated TradeNet behavior, live Market Depth, or broker-side transaction submission.
 
 ## User experience
 
@@ -72,4 +74,14 @@ The income/cost summary reads normalized broker cashflows plus app/system-owned 
 
 ## Validation to retain
 
-Tests cover shared classification and sign normalization, ambiguous-margin fail-closed behavior, duplicate-looking fallback-ID preservation, broker evidence-only journal behavior, category-aware reconciliation, manual-post idempotency and outflow rejection, separation of positive broker cash from app free cash, manual credited-interest replay, margin-interest debt capitalization (including the existing open-position realized-charge rule), income-cost reporting, and Russian translation parity. PR/Actions evidence must be recorded against the final feature-branch commit before release.
+Tests cover shared classification and sign normalization, ambiguous-margin fail-closed behavior, duplicate-looking fallback-ID preservation, broker evidence-only journal behavior, category-aware reconciliation, manual-post idempotency and outflow rejection, separation of positive broker cash from app free cash, manual credited-interest replay, margin-interest debt capitalization (including the existing open-position realized-charge rule), income-cost reporting, and Russian translation parity.
+
+## Production validation evidence
+
+- **Feature PR #720 head:** `e962a62b57db485e931518229f53f5abe75c73a9`; [Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/45386375741) and [Security & Workflow Validation](https://github.com/armave/portfolio-terminal/actions/runs/45386375513) passed before merge.
+- **Production main commit:** `2cad42ae551ff192d34e409258b1d0baa1e25698`; [main-push Pull Request CI](https://github.com/armave/portfolio-terminal/actions/runs/45387805304) and [same-commit Security & Workflow Validation](https://github.com/armave/portfolio-terminal/actions/runs/45387807799) completed successfully.
+- The production-main quality job passed typecheck, Oxlint, the full Vitest suite (**218 files, 2,879 tests**), Vite development-server smoke, dead-code validation, and full plus production dependency audits. Aggregate coverage was 81.99% statements, 76.25% branches, 88.08% functions and 85.31% lines; the coverage-threshold job passed.
+- The production build, desktop/mobile browser smoke and performance baseline, and Operations Browser Journey (account, settings and guest) passed. Gitleaks, actionlint, zizmor and CodeQL passed on the production commit.
+- The GitHub Pages staging job verified the build artifact's embedded commit and source run ID, then required successful security validation for the same `main` SHA. Pages deployment and its post-publish HTTP smoke both passed. The exact deployment run is [45387805304](https://github.com/armave/portfolio-terminal/actions/runs/45387805304); the published URL is [armave.github.io/portfolio-terminal](https://armave.github.io/portfolio-terminal/).
+
+These checks establish the deployed application artifact and deterministic regression coverage, not live broker connectivity or live Market Depth behavior.
