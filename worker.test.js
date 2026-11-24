@@ -2018,6 +2018,38 @@ describe('PortfolioStateDO TradeNet portfolio stream sanitization', () => {
     expect(store.sanitizeFreedomPortfolioStreamPayload({ loaded: false, acc: [], pos: [] })).toBeNull();
     expect(store.sanitizeFreedomPortfolioStreamPayload({ loaded: true, acc: [] })).toBeNull();
   });
+
+  it('preserves unclassified-currency rows as minimal markers for partial client-side validation', () => {
+    const store = makeStore();
+    const result = store.sanitizeFreedomPortfolioStreamPayload({
+      loaded: true,
+      acc: [
+        { curr: 'USD', s: '100' },
+        { s: '500', private_account: 'must-not-forward' },
+        { curr: 'EUR', s: '250' },
+        null
+      ],
+      pos: [
+        { curr: 'USD', i: 'AAPL.US', q: 2 },
+        { i: 'MSFT.US', q: 3, private_account: 'must-not-forward' },
+        { curr: 'EUR', i: 'SAP', q: 4 }
+      ]
+    });
+
+    expect(result).toEqual({
+      data: { result: { ps: {
+        loaded: true,
+        acc: [{ curr: 'USD', s: 100, currval: null, forecast_in: 0, forecast_out: 0, t2_in: 0, t2_out: 0 }, { curr: '' }, { curr: '' }],
+        pos: [{ i: 'AAPL.US', name: 'AAPL.US', q: 2, curr: 'USD', mkt_price: null, market_value: null,
+          bal_price_a: null, profit_close: null, acc_pos_id: null, instr_id: null, issue_nb: null,
+          t: null, k: null, go: null, vm: null }, { curr: '' }]
+      } } }
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('must-not-forward');
+    expect(serialized).not.toContain('EUR');
+    expect(serialized).not.toContain('SAP');
+  });
 });
 
 describe('PortfolioStateDO optimistic concurrency', () => {
@@ -3177,6 +3209,129 @@ describe('PortfolioStateDO payload validation', () => {
     expect(latest.headers.get('ETag')).toBe('"0"');
   });
 
+  function makeSqliteLimitedStore({ failChunkWriteAt = 0 } = {}) {
+    const values = new Map();
+    const maximumValueBytes = 512 * 1024;
+    let chunkWrites = 0;
+    const valueBytes = (value) => typeof value === 'string'
+      ? new TextEncoder().encode(value).byteLength
+      : new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    const putValue = async (target, key, value) => {
+      if (valueBytes(value) > maximumValueBytes) throw new Error('SQLITE_TOOBIG: simulated row limit');
+      if (String(key).includes(':chunk:')) {
+        chunkWrites += 1;
+        if (failChunkWriteAt > 0 && chunkWrites === failChunkWriteAt) {
+          throw new Error('Simulated chunk storage failure.');
+        }
+      }
+      target.set(key, value);
+    };
+    const storage = {
+      get: async (key) => values.get(key),
+      put: async (key, value) => putValue(values, key, value),
+      delete: async (key) => values.delete(key),
+      transaction: async (callback) => {
+        const staged = new Map(values);
+        const transaction = {
+          get: async (key) => staged.get(key),
+          put: async (key, value) => putValue(staged, key, value),
+          delete: async (key) => staged.delete(key)
+        };
+        const result = await callback(transaction);
+        values.clear();
+        for (const [key, value] of staged) values.set(key, value);
+        return result;
+      }
+    };
+    return { store: new PortfolioStateDO({ storage }, {}), values };
+  }
+
+  it('chunks large encrypted history below the SQLite row ceiling and reassembles it with its revision', async () => {
+    const { store, values } = makeSqliteLimitedStore();
+    const encryptedPayload = 'x'.repeat(3 * 1024 * 1024);
+    const serialized = JSON.stringify({ encryptedPayload });
+    const headers = {
+      'Content-Type': 'application/json',
+      'If-Match': '"0"',
+      'Idempotency-Key': 'cloud-history-chunked-write-0001'
+    };
+    const write = () => store.fetch(new Request('https://worker.test/api/history', {
+      method: 'POST', headers, body: serialized
+    }));
+
+    const first = await write();
+    expect(first.status).toBe(200);
+    expect(first.headers.get('ETag')).toBe('"1"');
+    const manifest = values.get('historyRecord');
+    expect(manifest).toMatchObject({
+      format: 'cloud-record-chunks-v1',
+      revision: 1,
+      byteLength: new TextEncoder().encode(serialized).byteLength
+    });
+    const chunkEntries = [...values.entries()].filter(([key]) => key.startsWith('historyRecord:chunk:1:'));
+    expect(chunkEntries).toHaveLength(manifest.chunkCount);
+    expect(chunkEntries.every(([, value]) => new TextEncoder().encode(value).byteLength <= 512 * 1024)).toBe(true);
+
+    const read = await store.fetch(new Request('https://worker.test/api/history'));
+    expect(read.status).toBe(200);
+    expect(read.headers.get('ETag')).toBe('"1"');
+    expect(await read.text()).toBe(serialized);
+
+    const replay = await write();
+    expect(replay.status).toBe(200);
+    expect(replay.headers.get('ETag')).toBe('"1"');
+    expect(replay.headers.get('Idempotency-Replayed')).toBe('true');
+
+    const replacement = await store.fetch(new Request('https://worker.test/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"1"' },
+      body: JSON.stringify({ encryptedPayload: 'compact-replacement' })
+    }));
+    expect(replacement.status).toBe(200);
+    expect(replacement.headers.get('ETag')).toBe('"2"');
+    expect([...values.keys()].some((key) => key.startsWith('historyRecord:chunk:1:'))).toBe(false);
+    const latest = await store.fetch(new Request('https://worker.test/api/history'));
+    expect(await latest.json()).toEqual({ encryptedPayload: 'compact-replacement' });
+    expect(latest.headers.get('ETag')).toBe('"2"');
+  });
+
+  it('chunks oversized portfolio snapshots using the same bounded record format', async () => {
+    const { store, values } = makeSqliteLimitedStore();
+    const encryptedPayload = 'y'.repeat(2 * 1024 * 1024);
+    const serialized = JSON.stringify({ encryptedPayload });
+    const write = await store.fetch(new Request('https://worker.test/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: serialized
+    }));
+    expect(write.status).toBe(200);
+    const read = await store.fetch(new Request('https://worker.test/api/state'));
+    expect(await read.text()).toBe(serialized);
+    expect(values.get('record')).toMatchObject({ format: 'cloud-record-chunks-v1', revision: 1 });
+  });
+
+  it('leaves the previous cloud record untouched when a chunk write fails', async () => {
+    const { store, values } = makeSqliteLimitedStore({ failChunkWriteAt: 2 });
+    const encryptedPayload = 'z'.repeat(2 * 1024 * 1024);
+    await expect(store.fetch(new Request('https://worker.test/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'If-Match': '"0"' },
+      body: JSON.stringify({ encryptedPayload })
+    }))).rejects.toThrow('Simulated chunk storage failure.');
+    expect(values.has('historyRecord')).toBe(false);
+    expect([...values.keys()].some((key) => key.startsWith('historyRecord:chunk:'))).toBe(false);
+  });
+
+  it('continues to read existing single-record cloud history during the chunked-format rollout', async () => {
+    const { store, values } = makeSqliteLimitedStore();
+    const legacy = JSON.stringify({ encryptedPayload: 'existing-history-record' });
+    values.set('historyRecord', { payload: legacy, revision: 7 });
+    const read = await store.fetch(new Request('https://worker.test/api/history'));
+    expect(read.status).toBe(200);
+    expect(read.headers.get('ETag')).toBe('"7"');
+    expect(await read.text()).toBe(legacy);
+  });
+
   it('rejects oversized cloud payloads before writing', async () => {
     const store = makeStore();
     const response = await store.fetch(new Request('https://worker.test/api/state', {
@@ -3364,6 +3519,34 @@ describe('Cloudflare authentication edge rate limiting', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe(origin);
     expect(response.headers.get('Content-Type')).toContain('application/json');
+    expect(env.doFetch).not.toHaveBeenCalled();
+  });
+
+  it('logs over-limit auth events with only the fixed event type and allowlisted route', async () => {
+    const output = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const privateBody = JSON.stringify({ username: 'private-auth-user', password: 'private-auth-password', token: 'private-auth-session-token' });
+    const response = await worker.fetch(authRequest('/api/auth/login', {}, privateBody), buildEnv({ decision: { success: false } }));
+    expect(response.status).toBe(429);
+    expect(output).toHaveBeenCalledOnce();
+    const event = JSON.parse(String(output.mock.calls[0][0]));
+    expect(event).toEqual({ type: 'auth_edge_rate_limited', route: '/api/auth/login' });
+    for (const secret of [clientIp, 'private-auth-user', 'private-auth-password', 'private-auth-session-token']) {
+      expect(JSON.stringify(event)).not.toContain(secret);
+    }
+  });
+
+  it('does not serialize limiter exceptions or auth request content on limiter failure', async () => {
+    const output = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const privateBody = JSON.stringify({ username: 'error-auth-user', password: 'error-auth-password', token: 'error-auth-session-token' });
+    const env = buildEnv({ limiter: { limit: vi.fn().mockRejectedValue(new Error('private-binding-detail https://edge.example/?token=secret')) } });
+    const response = await worker.fetch(authRequest('/api/auth/login', {}, privateBody), env);
+    expect(response.status).toBe(503);
+    expect(output).toHaveBeenCalledOnce();
+    const event = JSON.parse(String(output.mock.calls[0][0]));
+    expect(event).toEqual({ type: 'auth_edge_rate_limit_error', route: '/api/auth/login' });
+    for (const secret of [clientIp, 'private-binding-detail', 'edge.example', 'token=secret', 'error-auth-user', 'error-auth-password', 'error-auth-session-token']) {
+      expect(JSON.stringify(event)).not.toContain(secret);
+    }
     expect(env.doFetch).not.toHaveBeenCalled();
   });
 
@@ -4478,6 +4661,85 @@ describe('Durable Object private portfolio and orders stream', () => {
   });
 });
 
+describe('Durable Object TradeNet rejected SID recovery', () => {
+  function makeStore() {
+    const values = new Map();
+    const storage = {
+      get: async key => values.get(key),
+      put: async (key, value) => values.set(key, value),
+      delete: async key => values.delete(key),
+      transaction: async callback => callback({
+        get: async key => values.get(key),
+        put: async (key, value) => values.set(key, value),
+        delete: async key => values.delete(key)
+      })
+    };
+    return new PortfolioStateDO({ storage }, {});
+  }
+
+  function stubRejectedUpgrade(status) {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      status,
+      webSocket: null,
+      headers: new Headers()
+    }));
+  }
+
+  it.each([401, 403])('invalidates the cached SID rejected by the account stream upgrade (%i)', async status => {
+    const store = makeStore();
+    store.freedomTradeNetSession = { sid: 's'.repeat(48), expiresAt: Date.now() + 60_000 };
+    stubRejectedUpgrade(status);
+    try {
+      await expect(store.connectFreedomAccountUpstream()).rejects.toMatchObject({ status });
+      expect(store.freedomTradeNetSession).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([401, 403])('invalidates the cached SID rejected by the quote stream upgrade (%i)', async status => {
+    const store = makeStore();
+    store.freedomTradeNetSession = { sid: 'q'.repeat(48), expiresAt: Date.now() + 60_000 };
+    stubRejectedUpgrade(status);
+    try {
+      await expect(store.connectFreedomQuoteUpstream(['AAPL.US'])).rejects.toMatchObject({ status });
+      expect(store.freedomTradeNetSession).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each([401, 403])('invalidates the cached SID rejected by the Market Depth upgrade (%i)', async status => {
+    const store = makeStore();
+    store.freedomTradeNetSession = { sid: 'd'.repeat(48), expiresAt: Date.now() + 60_000 };
+    const session = { streamId: 'stream-1', symbol: 'AAPL.US' };
+    store.freedomDepthStreams.set(session.streamId, session);
+    stubRejectedUpgrade(status);
+    try {
+      await expect(store.connectFreedomMarketDepthUpstream(session)).rejects.toMatchObject({ status });
+      expect(store.freedomTradeNetSession).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('does not invalidate a newer SID when an older in-flight socket upgrade is rejected', async () => {
+    const store = makeStore();
+    store.freedomTradeNetSession = { sid: 'o'.repeat(48), expiresAt: Date.now() + 60_000 };
+    const replacement = { sid: 'n'.repeat(48), expiresAt: Date.now() + 60_000 };
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      store.freedomTradeNetSession = replacement;
+      return { status: 401, webSocket: null, headers: new Headers() };
+    }));
+    try {
+      await expect(store.connectFreedomQuoteUpstream(['AAPL.US'])).rejects.toMatchObject({ status: 401 });
+      expect(store.freedomTradeNetSession).toBe(replacement);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe('Durable Object administrator Market Depth live stream', () => {
   function createStorage() {
     const values = new Map();
@@ -5476,6 +5738,87 @@ describe('Durable Object tenant directory ownership foundation', () => {
     expect(invalid.status).toBe(503);
     expect(values.get('tenant:directory:v1')).toMatchObject({ version: 1, tenants: [], memberships: [] });
   });
+
+  it('fails closed and preserves any tenant directory with inconsistent ownership or grant relationships', async () => {
+    const corruptions = [
+      {
+        name: 'duplicate tenant identifiers',
+        mutate: (directory) => directory.tenants.push(structuredClone(directory.tenants[0]))
+      },
+      {
+        name: 'workspace referencing a missing tenant',
+        mutate: (directory) => { directory.workspaces[0].tenantId = 'tenant-missing-123'; }
+      },
+      {
+        name: 'portfolio referencing a missing workspace',
+        mutate: (directory) => { directory.portfolios[0].workspaceId = 'workspace-missing-123'; }
+      },
+      {
+        name: 'membership with forged capabilities',
+        mutate: (directory) => { directory.memberships[0].capabilities.push('portfolio.transactions.write'); }
+      },
+      {
+        name: 'active grant with stale membership version',
+        mutate: (directory) => { directory.grants[0].membershipVersion += 1; }
+      },
+      {
+        name: 'grant referencing a portfolio in another tenant',
+        mutate: (directory) => { directory.grants[0].tenantId = 'tenant-other-123'; }
+      }
+    ];
+
+    for (const corruption of corruptions) {
+      const { store, values } = await makeTenantStore();
+      const initialized = await store.fetch(new Request('https://store.test/api/tenants', {
+        headers: headers('tenant-admin-token')
+      }));
+      expect(initialized.status, corruption.name + ' baseline').toBe(200);
+
+      const corruptedDirectory = structuredClone(values.get('tenant:directory:v1'));
+      corruption.mutate(corruptedDirectory);
+      values.set('tenant:directory:v1', corruptedDirectory);
+      const retainedCorruption = structuredClone(corruptedDirectory);
+
+      const response = await store.fetch(new Request('https://store.test/api/tenants', {
+        headers: headers('tenant-admin-token')
+      }));
+
+      expect(response.status, corruption.name).toBe(503);
+      expect(values.get('tenant:directory:v1'), corruption.name).toEqual(retainedCorruption);
+    }
+  });
+
+  it('rejects duplicate membership identities and duplicate active portfolio grants', async () => {
+    const { store, values } = await makeTenantStore();
+    const initialized = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(initialized.status).toBe(200);
+
+    const duplicateMemberships = structuredClone(values.get('tenant:directory:v1'));
+    duplicateMemberships.memberships.push(structuredClone(duplicateMemberships.memberships[0]));
+    values.set('tenant:directory:v1', duplicateMemberships);
+    const duplicateMembershipResponse = await store.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(duplicateMembershipResponse.status).toBe(503);
+    expect(values.get('tenant:directory:v1')).toEqual(duplicateMemberships);
+
+    const { store: grantStore, values: grantValues } = await makeTenantStore();
+    const grantInitialized = await grantStore.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(grantInitialized.status).toBe(200);
+    const duplicateGrants = structuredClone(grantValues.get('tenant:directory:v1'));
+    duplicateGrants.grants.push(structuredClone(duplicateGrants.grants[0]));
+    grantValues.set('tenant:directory:v1', duplicateGrants);
+    const duplicateGrantResponse = await grantStore.fetch(new Request('https://store.test/api/tenants', {
+      headers: headers('tenant-admin-token')
+    }));
+    expect(duplicateGrantResponse.status).toBe(503);
+    expect(grantValues.get('tenant:directory:v1')).toEqual(duplicateGrants);
+  });
+
 });
 
 describe('tenant directory Worker routing', () => {
@@ -5848,7 +6191,10 @@ describe("Freedom daily historical candles", () => {
 
 
 describe("server diagnostic log redaction", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
 
   it("emits only an allowlisted server event and never serializes the supplied error", () => {
     const output = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -5869,6 +6215,52 @@ describe("server diagnostic log redaction", () => {
     expect(String(output.mock.calls[0][0])).toBe('{"type":"server_diagnostic","category":"unknown"}');
   });
 
+  it("captures only allowlisted provider metrics for success, cache, and failure paths", async () => {
+    // The earlier Finnhub 429 validation deliberately leaves a provider-wide cooldown.
+    // Use Twelve Data here so this test measures log redaction, not cooldown reset behavior.
+    const output = vi.spyOn(console, "info").mockImplementation(() => {});
+    const upstreamError = "https://provider.example/private?token=upstream-secret AAPL $12,345";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ quote: "ok", upstreamPayload: "provider-private-payload" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: upstreamError }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" }
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const fetchQuote = (symbol) => worker.fetch(new Request(
+      "https://worker.test/?action=provider-quote&provider=twelvedata&symbol=" + symbol,
+      { headers: { "X-App-Auth": "test-secret" } }
+    ), { GATEWAY_SECRET: "test-secret", TWELVE_KEY: "private-provider-api-key" });
+
+    const first = await fetchQuote("LOGTESTA");
+    const cached = await fetchQuote("LOGTESTA");
+    const failed = await fetchQuote("LOGTESTB");
+    expect(first.status).toBe(200);
+    expect(cached.status).toBe(200);
+    expect(failed.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const events = output.mock.calls.map(([entry]) => JSON.parse(String(entry)));
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({ type: "provider_metric", metric: "provider_request", provider: "twelvedata", success: true });
+    expect(events[0].durationMs).toEqual(expect.any(Number));
+    expect(events[1]).toEqual({ type: "provider_metric", metric: "cache_hit", provider: "twelvedata" });
+    expect(events[2]).toMatchObject({ type: "provider_metric", metric: "provider_failure", provider: "twelvedata" });
+    expect(events[2].durationMs).toEqual(expect.any(Number));
+
+    for (const event of events) {
+      expect(Object.keys(event).every((key) => ["type", "metric", "provider", "durationMs", "success"].includes(key))).toBe(true);
+      const serialized = JSON.stringify(event);
+      for (const secret of ["LOGTESTA", "LOGTESTB", "private-provider-api-key", "provider.example", "upstream-secret", "provider-private-payload", "AAPL", "$12,345"]) {
+        expect(serialized).not.toContain(secret);
+      }
+    }
+  });
+
   it("keeps Worker and Durable Object failure call sites free of raw error serialization", () => {
     const workerSource = readFileSync(new URL("./worker.js", import.meta.url), "utf8");
     const stateStoreSource = readFileSync(new URL("./state-store.js", import.meta.url), "utf8");
@@ -5876,7 +6268,7 @@ describe("server diagnostic log redaction", () => {
     expect(workerSource).not.toContain('console.error("Persistent TradeNet account socket failed", error)');
     expect(workerSource).not.toContain('console.error("Persistent TradeNet Market Depth socket failed", error)');
     expect(workerSource).not.toContain('console.error("Account Durable Object request failed", error)');
-    expect(workerSource).not.toContain('console.error(`[Gemini Proxy Error on ${modelName}]:`, err.message)');
+    expect(workerSource).not.toContain("...fields");
     expect(stateStoreSource).not.toContain('error instanceof Error ? error.message : "unknown error"');
     expect(workerSource).toContain('logServerDiagnostic("error", "tradenet_quote_stream_failed", error)');
     expect(stateStoreSource).toContain('logServerDiagnostic("warn", "session_cleanup_deferred", error)');
