@@ -283,7 +283,7 @@ All third-party Actions referenced by the PR, security, operations, and Pages wo
 
 ### Deployment validation
 
-The Pages workflow now runs the production browser smoke against the exact build before uploading the Pages artifact. The Worker deployment remains restricted to `main` and now adds TypeScript validation, focused Worker/authentication tests, and both full and production dependency audits before deploying the pinned Wrangler action.
+The Pages workflow now runs the production browser smoke against the exact build before uploading the Pages artifact. The Worker deployment remains restricted to `main` and adds TypeScript validation, focused Worker/authentication tests, both full and production dependency audits, an exact-commit `Security & Workflow Validation` gate before the production write, and a post-deployment `GET /health` check requiring the precise deployed SHA. The health endpoint is read-only and returns only service identity and a validated SHA; it does not certify live TradeNet connectivity.
 
 ### Required checks and repository settings
 

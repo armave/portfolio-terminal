@@ -1460,6 +1460,30 @@ export default {
 
         const incomingUrl = new URL(request.url);
 
+        // Public, read-only deployment probe. It intentionally runs before
+        // account authentication and exposes only service identity and the
+        // commit SHA injected by the main-only deployment workflow.
+        if (incomingUrl.pathname === "/health") {
+            if (request.method !== "GET") {
+                return jsonError("Health endpoint only supports GET.", 405, corsHeaders);
+            }
+            const deploymentSha = typeof env?.DEPLOYMENT_SHA === "string" &&
+                /^[0-9a-f]{40}$/i.test(env.DEPLOYMENT_SHA)
+                ? env.DEPLOYMENT_SHA
+                : null;
+            const headers = new Headers();
+            for (const [name, value] of Object.entries(corsHeaders)) {
+                if (typeof value === "string") headers.set(name, value);
+            }
+            headers.set("Content-Type", "application/json");
+            headers.set("Cache-Control", "no-store");
+            return new Response(JSON.stringify({
+                ok: true,
+                service: "trading-proxy",
+                deploymentSha
+            }), { status: 200, headers });
+        }
+
         // Browser WebSocket constructors cannot set Authorization headers. The
         // one-use ticket was minted by an authenticated request and is consumed
         // by the Durable Object before it accepts this persistent socket.

@@ -36,6 +36,45 @@ import { PortfolioStateDO } from './state-store.js';
 import { logServerDiagnostic } from './safeServerDiagnostics.js';
 import { createFreedomMarketDepthBook } from './src/services/freedomMarketDepth.js';
 
+describe('Worker deployment health endpoint', () => {
+  it('returns only public service identity and the validated deployment SHA without account authentication', async () => {
+    const deploymentSha = 'a'.repeat(40);
+    const response = await worker.fetch(new Request('https://worker.test/health'), {
+      ALLOWED_ORIGINS: 'https://armave.github.io',
+      DEPLOYMENT_SHA: deploymentSha
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual({
+      ok: true,
+      service: 'trading-proxy',
+      deploymentSha
+    });
+  });
+
+  it('rejects non-GET requests to the public health endpoint', async () => {
+    const response = await worker.fetch(new Request('https://worker.test/health', { method: 'POST' }), {
+      ALLOWED_ORIGINS: 'https://armave.github.io',
+      DEPLOYMENT_SHA: 'b'.repeat(40)
+    });
+    expect(response.status).toBe(405);
+    expect(await response.json()).toEqual({ error: 'Health endpoint only supports GET.' });
+  });
+
+  it('never reports an invalid deployment version as a verified SHA', async () => {
+    const response = await worker.fetch(new Request('https://worker.test/health'), {
+      ALLOWED_ORIGINS: 'https://armave.github.io',
+      DEPLOYMENT_SHA: 'not-a-commit'
+    });
+    expect(await response.json()).toEqual({
+      ok: true,
+      service: 'trading-proxy',
+      deploymentSha: null
+    });
+  });
+});
+
 describe('production Margin Intelligence digest enforcement', () => {
   it('keeps encrypted-only digest writes enabled in the production Wrangler configuration', () => {
     const config = readFileSync(new URL('./wrangler.jsonc', import.meta.url), 'utf8');

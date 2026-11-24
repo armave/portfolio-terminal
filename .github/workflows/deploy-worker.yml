@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
+      actions: read
       contents: read
     environment:
       name: cloudflare-production
@@ -81,7 +82,14 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4.156.0'
-          command: deploy --dry-run
+          command: deploy --var DEPLOYMENT_SHA:${{ github.sha }} --dry-run
+
+      - name: Require successful security validation for this exact main commit
+        id: require_security_success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: bash .github/scripts/require-main-push-security-success.sh
 
       - name: Deploy Worker with pinned Wrangler
         id: deploy_worker
@@ -90,13 +98,31 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: '4.156.0'
-          command: deploy
+          command: deploy --var DEPLOYMENT_SHA:${{ github.sha }}
+
+      - name: Verify deployed Worker health and exact commit
+        id: verify_worker
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          response="$(curl --fail --silent --show-error \
+            --retry 8 --retry-delay 5 --retry-connrefused --max-time 15 \
+            "https://trading-proxy.armenavetisyan-sa.workers.dev/health")"
+          jq -e --arg sha "$EXPECTED_SHA" '
+            .ok == true and
+            .service == "trading-proxy" and
+            .deploymentSha == $sha
+          ' <<< "$response" > /dev/null
+          echo "$response" | jq '{ok, service, deploymentSha}'
 
       - name: Publish exact-ref deployment evidence
         if: always()
         env:
           DRY_RUN_RESULT: ${{ steps.worker_dry_run.outcome || 'not-run' }}
+          SECURITY_RUN_ID: ${{ steps.require_security_success.outputs.security_run_id || 'not-verified' }}
           DEPLOY_RESULT: ${{ steps.deploy_worker.outcome || 'not-run' }}
+          VERIFY_RESULT: ${{ steps.verify_worker.outcome || 'not-run' }}
         run: |
           {
             echo "## Cloudflare Worker deployment evidence"
@@ -106,6 +132,8 @@ jobs:
             echo "| Deployed commit candidate | $(git rev-parse HEAD) |"
             echo "| Ref | $GITHUB_REF |"
             echo "| Dry-run validation | $DRY_RUN_RESULT |"
+            echo "| Same-commit security run | $SECURITY_RUN_ID |"
             echo "| Deployment | $DEPLOY_RESULT |"
+            echo "| Post-deployment health/version verification | $VERIFY_RESULT |"
             echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
           } >> "$GITHUB_STEP_SUMMARY"
