@@ -17,7 +17,12 @@ import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } f
 import { normalizeFinnhubStockSplits, toPortfolioCorporateActionEvent } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 import type { PortfolioState } from '../types/portfolio';
-import { flushSavedHistoryPersistence } from '../services/storage';
+import {
+  activatePortfolioStorageScope,
+  clearPortfolioStateRecoveryPersistence,
+  clearSavedHistoryPersistence,
+  flushSavedHistoryPersistence
+} from '../services/storage';
 
 const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
@@ -103,9 +108,15 @@ function createClosedHistoryFeeAuditImportFixture() {
   return { sale, before, after, cashflows };
 }
 
-beforeEach(() => {
-  sharedTestStorage.clear();
+beforeEach(async () => {
   vi.stubGlobal('localStorage', sharedLocalStorage);
+  await activatePortfolioStorageScope('legacy');
+  // PortfolioStore commits queue an account-scoped IndexedDB recovery mirror.
+  // Clear that durable mirror and the closed-history rows between tests as well
+  // as localStorage; otherwise a prior test's portfolio can seed the next store.
+  await clearPortfolioStateRecoveryPersistence('legacy');
+  await clearSavedHistoryPersistence();
+  sharedTestStorage.clear();
 });
 
 afterEach(() => {
