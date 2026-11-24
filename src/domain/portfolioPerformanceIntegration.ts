@@ -327,7 +327,7 @@ function mapIncomeCostAdjustments(
       return 'An income or cost cashflow has an invalid amount or a different/unknown currency.';
     }
     adjustments.push({ timestamp, type, amount: Math.abs(amount), currency, quality, ...(refund ? { refund: true } : {}) });
-    if (quality === 'provisional') warnings.push('One or more income/cost rows are not verified source records.');
+    if (quality === 'provisional') warnings.push('One or more income/cost rows are not verified Freedom broker-history records.');
     return null;
   };
 

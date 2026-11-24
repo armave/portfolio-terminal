@@ -725,6 +725,7 @@ const JOURNAL_DELTA_FIELDS = [
 
 const EXTERNAL_CASHFLOW_TYPES = new Set<PortfolioTransactionEventType>([
   'dividend',
+  'interest.income',
   'fee',
   'margin.interest',
   'cash.deposit',

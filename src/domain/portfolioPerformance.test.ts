@@ -237,10 +237,10 @@ describe('summarizePerformanceIncomeAndCosts', () => {
   it('reports dividends and costs separately without changing return cash-flow treatment', () => {
     const result = summarizePerformanceIncomeAndCosts([
       { timestamp: 1, type: 'dividend', amount: 20, currency: 'USD', quality: 'current' },
-      { timestamp: 1.5, type: 'interestIncome', amount: 1.5, currency: 'USD', quality: 'current' },
-      { timestamp: 2, type: 'fee', amount: 2, currency: 'USD', quality: 'current' },
-      { timestamp: 3, type: 'commission', amount: 3, currency: 'USD', quality: 'current' },
-      { timestamp: 4, type: 'interest', amount: 4, currency: 'USD', quality: 'current' }
+      { timestamp: 2, type: 'interestIncome', amount: 1.5, currency: 'USD', quality: 'current' },
+      { timestamp: 3, type: 'fee', amount: 2, currency: 'USD', quality: 'current' },
+      { timestamp: 4, type: 'commission', amount: 3, currency: 'USD', quality: 'current' },
+      { timestamp: 5, type: 'interest', amount: 4, currency: 'USD', quality: 'current' }
     ], 'usd');
     expect(result.status).toBe('available');
     if (result.status !== 'unavailable') {
