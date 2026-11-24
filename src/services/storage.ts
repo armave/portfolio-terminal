@@ -355,8 +355,19 @@ function queuePortfolioStateRecoveryWrite(
       }
       return true;
     } catch (error) {
-      // Keep the local recovery copy when IndexedDB cannot commit. It remains a
-      // fallback, never a prerequisite for the active local snapshot write.
+      // Keep a local fallback only when the IndexedDB mirror cannot commit.
+      // It is best-effort and never blocks the active local snapshot write.
+      try {
+        if (previous) {
+          getBrowserStorage()?.setItem(
+            scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope),
+            JSON.stringify(previous)
+          );
+        }
+      } catch {
+        // The preceding IndexedDB recovery record remains available when the
+        // failure was a transient quota/open issue.
+      }
       logSafeDiagnostic('warn', 'browser-storage', error);
       return false;
     }
@@ -1312,7 +1323,10 @@ export function saveState<TState extends object>(
 export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
   try {
     const storage = getBrowserStorage();
-    if (!storage) return fallback;
+    if (!storage) {
+      const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
+      return cached ? { ...fallback, ...cached } : fallback;
+    }
 
     const canonicalKey = scopedStorageKey(STORAGE_KEY_STATE);
     // Recovery stays within the active account namespace. Guest/offline scopes
@@ -1614,17 +1628,14 @@ export function saveWorkspaceDisclosurePreferences(preferences: WorkspaceDisclos
 /**
  * Purges active and legacy state payloads from localStorage.
  */
-export function clearLocalData(): void {
+export async function clearLocalData(): Promise<void> {
   const storage = getBrowserStorage();
-  if (!storage) return;
   try {
-    removeStoredKeys(storage, [
-      scopedStorageKey(STORAGE_KEY_LEGACY_STATE),
-      scopedStorageKey(STORAGE_KEY_STATE),
-      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY)
-    ]);
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_LEGACY_STATE));
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_STATE));
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY));
   } catch (err) {
     logSafeDiagnostic('error', 'browser-storage', err);
   }
-  void clearPortfolioStateRecoveryPersistence(activePortfolioStorageScope);
+  await clearPortfolioStateRecoveryPersistence(activePortfolioStorageScope);
 }
