@@ -94,8 +94,11 @@ export function classifyChangedFiles(input, { forceFullValidation = false } = {}
       classification: 'workflow-only',
       reason: 'Workflow or CI infrastructure changed without application or dependency changes',
       changedFileCount: files.length,
-      runQuality: true, runBrowser: false,
-      runCodeql: files.some(isCodePath), runWorkflowSecurity: true
+      runQuality: true,
+      // The primary CI entry workflow must validate its own build/artifact/browser graph.
+      runBrowser: files.includes('.github/workflows/ci.yml'),
+      runCodeql: files.some(isCodePath),
+      runWorkflowSecurity: true
     };
   }
 

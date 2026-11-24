@@ -38,6 +38,15 @@ describe('CI changed-file classification', () => {
       runCodeql: false, runWorkflowSecurity: true
     });
   });
+  it('runs production build and browser validation when the primary CI workflow changes', () => {
+    expect(classifyChangedFiles(['.github/workflows/ci.yml'])).toMatchObject({
+      classification: 'workflow-only',
+      runQuality: true,
+      runBrowser: true,
+      runCodeql: false,
+      runWorkflowSecurity: true
+    });
+  });
   it('keeps CI tooling changes under workflow lint, CodeQL and unit tests', () => {
     expect(classifyChangedFiles(['scripts/ci-change-detection.mjs'])).toMatchObject({
       classification: 'workflow-only', runQuality: true, runBrowser: false,
