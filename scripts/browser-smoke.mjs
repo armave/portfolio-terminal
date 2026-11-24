@@ -1580,7 +1580,6 @@ try {
 
   await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  }
   await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
   const aaplRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'AAPL' });
@@ -1726,6 +1725,7 @@ try {
   const rowsAfterFailedRefresh = await page.locator('#closedTradesHistory article').count();
   if (rowsAfterFailedRefresh !== rowsBeforeFailedRefresh || rowsAfterFailedRefresh === 0) {
     throw new Error('A failed Trades refresh must preserve all last-known-good history rows.');
+  }
   }
 
   await page.getByRole('button', { name: /balance/i }).click();
