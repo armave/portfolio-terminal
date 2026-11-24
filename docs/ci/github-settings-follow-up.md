@@ -34,7 +34,7 @@ Use **Settings → Rules → Rulesets**.
 2. Configure a deliberate, minimal bypass policy. Review the currently observed `RepositoryRole` bypass actor and change it only with administrator approval.
 3. Create and activate a `dev-protection` ruleset for `refs/heads/dev` using `github-rulesets/dev-protection.json`.
 4. In the UI, select the exact status-check contexts GitHub reports. Depending on the UI, check names can be displayed with a workflow prefix; prefer the live check picker over blindly pasting a differently formatted context.
-5. Do **not** make **Financial Integrity Regression** globally required. It is path-filtered and does not run for unrelated PRs, so a global requirement could leave unrelated PRs blocked waiting for a check that is intentionally absent.
+5. Keep **Financial Integrity Regression** out of required PR checks. It is manual-dispatch-only; automatic PR/push validation runs the full Vitest suite, which already includes its focused financial, persistence, and Worker/authentication tests.
 6. Keep scheduled/manual-only audits out of required PR checks. They are not PR validation jobs.
 
 The example JSON files are reference payloads. Review them against the live ruleset schema and current check names before importing.

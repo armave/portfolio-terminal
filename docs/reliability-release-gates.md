@@ -305,7 +305,7 @@ Oxlint is integrated into PR CI and `npm run ci:local`. The initial enforced pol
 ## 10. CI and configuration refinements — 2026-11-17
 
 - `.nvmrc` is the shared Node.js 22 version source for GitHub Actions; `package.json` and the lockfile declare Node.js 22.x and npm 10.x as the supported runtime.
-- The path-filtered **Financial Integrity Regression** workflow gives transaction, financial-domain, persistence, backup/reconciliation, and Worker/authentication tests a dedicated status and exact-head evidence when relevant paths change. The standard PR workflow continues to run the complete Vitest suite on every PR.
+- The manual-only **Financial Integrity Regression** workflow remains available for focused diagnostics. Automatic PR/push validation runs the complete Vitest suite, including the transaction, financial-domain, persistence, backup/reconciliation, and Worker/authentication tests in that focused subset.
 - Localization tests now validate that every Russian dictionary value is non-empty and that interpolation placeholders match the corresponding English key. Unknown dynamic copy continues to use the established fallback behavior.
 - The weekly security workflow runs full and production-only npm dependency audits on scheduled and manual runs, in addition to per-PR audits.
 - Cloudflare Worker deployment rejects non-main refs, serializes production deployments without canceling an in-progress deployment, validates the Wrangler bundle with a dry run, and targets the `cloudflare-production` GitHub environment before deploying.
