@@ -998,7 +998,7 @@ describe('storage service', () => {
       expect(loadSavedHistory()).toEqual(expected);
     });
 
-    it('uses blank local recovery baselines after a committed portfolio reset', async () => {
+    it('uses blank IndexedDB recovery baselines after a committed portfolio reset', async () => {
       if (typeof indexedDB === 'undefined') return;
       const previousHistory = {
         brokerExecutedTrades: [{ id: 'before-reset-trade' }],
@@ -1025,7 +1025,21 @@ describe('storage service', () => {
         { deviceActiveView: 'COMBINED' }
       )).toBe(true);
 
-      const recoverySnapshot = JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1') || 'null');
+      await flushPortfolioStateRecoveryPersistence();
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+      const recoveryDb = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open reset portfolio recovery database'));
+      });
+      const recoverySnapshot = await new Promise<unknown>((resolve, reject) => {
+        const transaction = recoveryDb.transaction('history', 'readonly');
+        const request = transaction.objectStore('history').get('portfolio-state-v1:last-known-good');
+        request.onsuccess = () => resolve(request.result);
+        transaction.onerror = () => reject(transaction.error || new Error('Could not read reset portfolio recovery'));
+        transaction.onabort = () => reject(transaction.error || new Error('Reset portfolio recovery read was aborted'));
+      });
+      recoveryDb.close();
       expect(recoverySnapshot).toMatchObject({
         activeView: 'COMBINED',
         balance: 0,
@@ -1213,11 +1227,11 @@ describe('storage service', () => {
   });
 
   describe('clearLocalData', () => {
-    it('clears state items from storage', () => {
+    it('clears state items and IndexedDB recovery records', async () => {
       storageMap.set('portfolio_state', 'data1');
       storageMap.set('margin_portfolio_state_dynamic_v2', 'data2');
 
-      clearLocalData();
+      await clearLocalData();
 
       expect(storageMap.has('portfolio_state')).toBe(false);
       expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
