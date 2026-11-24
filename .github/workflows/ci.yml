@@ -22,8 +22,39 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  detect-changes:
+    name: Classify changed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      classification: ${{ steps.classify.outputs.classification }}
+      run_quality: ${{ steps.classify.outputs.run_quality }}
+      run_browser: ${{ steps.classify.outputs.run_browser }}
+      run_codeql: ${{ steps.classify.outputs.run_codeql }}
+      run_workflow_security: ${{ steps.classify.outputs.run_workflow_security }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Classify changed paths conservatively
+        id: classify
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci-change-detection.mjs
+
   quality:
     name: Static validation and unit tests
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.run_quality == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -146,6 +177,8 @@ jobs:
 
   production-build:
     name: Production build and artifact
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.run_browser == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -165,7 +198,7 @@ jobs:
 
       - name: Build production site
         id: build
-        run: npm run build
+        run: node scripts/build.js
 
       - name: Write immutable build provenance into the artifact
         env:
@@ -212,7 +245,8 @@ jobs:
 
   browser-smoke:
     name: Production browser smoke and performance
-    needs: production-build
+    needs: [detect-changes, production-build]
+    if: ${{ needs.detect-changes.outputs.run_browser == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -363,7 +397,8 @@ jobs:
 
   operations-browser:
     name: Operations Browser Journey
-    needs: production-build
+    needs: [detect-changes, production-build]
+    if: ${{ needs.detect-changes.outputs.run_browser == 'true' }}
     permissions:
       contents: read
     uses: ./.github/workflows/operations-browser.yml
@@ -374,8 +409,8 @@ jobs:
 
   coverage:
     name: Coverage baseline and thresholds
-    needs: quality
-    if: ${{ always() }}
+    needs: [detect-changes, quality]
+    if: ${{ always() && needs.detect-changes.outputs.run_quality == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -432,8 +467,9 @@ jobs:
 
   pages-deploy:
     name: Publish validated GitHub Pages artifact
-    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ needs.detect-changes.outputs.run_browser == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     needs:
+      - detect-changes
       - quality
       - production-build
       - browser-smoke

@@ -25,7 +25,7 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
 11. **Validation:** Run the repository's full merge gate on the final change set:
     - `npm ci`
     - `npm run typecheck`
-    - `npm test`
+    - `npm run test:coverage` (the complete Vitest suite with V8 coverage; avoid running `npm test` immediately before it for the same candidate)
     - `npm run test:financial` when financial, persistence, backup/reconciliation, or Worker authorization paths change
     - `npm run validate:dead-code`
     - `npm run audit:dependencies`
@@ -41,12 +41,12 @@ These conventions describe the current Preact, TypeScript, and Cloudflare Worker
 
 ## CI, security, and deployment gates
 
-- `.github/workflows/ci.yml` is the single PR validation entry point. The quality job runs the complete Vitest suite once with `npm run test:coverage`; the separately named coverage job consumes that exact report artifact and rechecks the unchanged aggregate floors rather than rerunning tests. Static checks and the production build remain independent; browser journeys consume the exact production artifact produced by that run.
+- `.github/workflows/ci.yml` is the single PR validation entry point. Its change detector skips application jobs only for documentation-only changes, skips build/browser jobs for workflow-only changes, and defaults unknown or incomplete change metadata to full validation. The quality job runs the complete Vitest suite once with `npm run test:coverage`; the separately named coverage job consumes that exact report artifact and rechecks the unchanged aggregate floors rather than rerunning tests. Static checks and the production build remain independent; browser journeys consume the exact production artifact produced by that run.
 - `.github/workflows/operations-browser.yml` is reusable by PR CI and remains manually runnable. It does not repeat unit tests, typecheck, dead-code validation, dependency audits, or the production build when called by PR CI.
-- `.github/workflows/financial-regression.yml` runs the focused transaction, financial-domain, persistence, backup/reconciliation, and Worker/authentication test subset only when relevant high-risk paths change; the standard PR workflow still runs the complete Vitest suite.
+- `.github/workflows/financial-regression.yml` keeps the focused transaction, financial-domain, persistence, backup/reconciliation, and Worker/authentication subset available through manual dispatch. Automatic PR/push validation runs the complete Vitest suite, which already includes those tests; do not execute the same subset a second time for every commit.
 - `vitest.config.ts` collects V8 coverage for the financial domain, portfolio store, Worker and Durable Object. Aggregate floors are lines 80%, statements 80%, functions 85%, and branches 70%; these floors are anchored to the measured baseline in `docs/ci/coverage-baseline-2026-11-17.md` and must not be lowered to conceal regressions.
 - `.oxlintrc.json` enables a small correctness-focused Oxlint baseline for production JavaScript/TypeScript. Vitest files remain governed by Vitest assertions and TypeScript's `noUnusedLocals`/`noUnusedParameters`; expand lint rules incrementally only after checking the existing codebase.
-- `.github/workflows/security.yml` runs CodeQL for JavaScript/TypeScript, a blocking Gitleaks scan over commits introduced by each PR/push, actionlint, and zizmor. A separate scheduled/manual full-history Gitleaks audit is advisory so legacy findings remain visible without hiding new leaks. Treat new-commit findings as merge blockers; do not add broad secret-scan suppressions.
+- `.github/workflows/security.yml` always runs a blocking Gitleaks scan over commits introduced by each PR/push. CodeQL runs when source/test code changes; actionlint and zizmor run when workflow or CI-infrastructure files change. Manual and scheduled runs execute the complete security validation. A separate scheduled/manual full-history Gitleaks audit is advisory so legacy findings remain visible without hiding new leaks. Treat new-commit findings as merge blockers; do not add broad secret-scan suppressions.
 - `.github/dependabot.yml` keeps npm and GitHub Actions dependencies on a weekly update cadence. Review major-version updates separately; do not automatically accept breaking changes. Version-update PRs target `dev` for both ecosystems; Dependabot security-update PRs continue to target the repository default branch (`main`). The weekly security workflow also runs full and production-only `npm audit` checks.
 - `.nvmrc` is the shared Node.js version source for CI; `package.json` and `package-lock.json` declare the supported Node.js 22.x and npm 10.x ranges. Keep the README and development environment aligned with that contract.
 - Third-party GitHub Actions must be pinned to immutable commit SHAs and annotated with the corresponding release version. Keep those SHAs current through Dependabot.
