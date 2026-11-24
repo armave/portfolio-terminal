@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 export const ACTIVITY_INDICATOR_SHOW_DELAY_MS = 400;
+export const WORKSPACE_ACTIVITY_INDICATOR_SHOW_DELAY_MS = 700;
 export const ACTIVITY_INDICATOR_MIN_VISIBLE_MS = 650;
 
 export interface DelayedActivityVisibilityController {

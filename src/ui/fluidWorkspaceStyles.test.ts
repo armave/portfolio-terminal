@@ -193,6 +193,7 @@ describe('desk transitions and supporting layouts', () => {
   const closedSource = readFileSync(new URL('../components/ClosedHistoryDesk.tsx', import.meta.url), 'utf8');
   const settingsSource = readFileSync(new URL('../components/SettingsDesk.tsx', import.meta.url), 'utf8');
   const authSource = readFileSync(new URL('../components/AuthModal.tsx', import.meta.url), 'utf8');
+  const toastViewportSource = readFileSync(new URL('../components/ToastViewport.tsx', import.meta.url), 'utf8');
 
   it('animates Trades pagination on the responsive card list', () => {
     expect(closedSource).toContain('<div key={pagination.currentPage} id="closedTradesHistory" class="closed-history-page-transition grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"');
@@ -218,7 +219,8 @@ describe('desk transitions and supporting layouts', () => {
     expect(inputTransition).toContain('background-color 140ms ease');
     expect(inputTransition).toContain('border-color 140ms ease');
     expect(inputTransition).not.toMatch(/\b(?:box-shadow|opacity|transform)\b/);
-    expect(appSource).toContain('transition-[opacity,transform] duration-200 ease-out');
+    expect(toastViewportSource).toContain('transition-[opacity,transform] duration-200 ease-out');
+    expect(appSource).toContain('<ToastViewport toasts={toasts} />');
     expect(appSource).not.toContain('transition-all');
   });
 

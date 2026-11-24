@@ -23,6 +23,7 @@ This directory contains maintained product and engineering references, current o
 - [REST and socket request audit](request-optimization-audit-2026-11-12.md) — request families and startup/refresh behavior.
 - [Request orchestration R03–R05](request-orchestration-r03-r05-2026-11-13.md) — shared request lifecycle and regression gates.
 - [Shared table pagination](table-pagination-pattern.md) — the supported reusable pagination pattern.
+- [Shared UI components](shared-ui-components.md) — operation activity feedback, data-quality notices, notification viewport and their ownership contracts.
 - [Trades history UX](trades-history-ux.md) — broker freshness, refresh semantics, sorting, and financial data-quality presentation.
 - [Trades history synchronization ownership](trades-history-sync-ownership.md) — account/session-scoped reconciliation, coalescing, request-owned progress, checkpoint safety, and persistence boundaries.
 - [Compare Exits UX](exit-comparison-ux.md) — scenario cost breakdown, quote provenance, signed cash/debt interpretation, exact dates, and responsive results presentation.

@@ -12,6 +12,17 @@ import {
 
 const status = (value: string, text = '') => ({ status: value, text });
 const stylesheet = readFileSync(new URL('../../style.css', import.meta.url), 'utf8');
+const indicatorSource = readFileSync(new URL('./CloudSyncIndicator.tsx', import.meta.url), 'utf8');
+
+describe('shared operation activity indicator integration', () => {
+  it('uses the shared spinner for visible cloud work while retaining the existing cloud status lifecycle', () => {
+    expect(indicatorSource).toContain('<OperationActivityIndicator');
+    expect(indicatorSource).toContain("displayTone === 'pending'");
+    expect(indicatorSource).toContain('announce={false}');
+    expect(CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS).toBe(700);
+    expect(CLOUD_SYNC_PENDING_MIN_VISIBLE_MS).toBe(650);
+  });
+});
 
 describe('resolveCloudSyncTone', () => {
   it('prioritizes sync failures over successful KV connectivity', () => {

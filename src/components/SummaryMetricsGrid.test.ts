@@ -118,6 +118,17 @@ describe('portfolio metric quote updates', () => {
   });
 });
 
+describe('shared data-quality notice integration', () => {
+  it('routes aggregate valuation quality through the reusable notice without changing the quality decision', () => {
+    const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
+    expect(source).toContain('<DataQualityNotice');
+    expect(source).toContain('status={dataQualityStatus}');
+    expect(source).toContain("const dataQualityStatus = valuationStatus === 'incomplete'");
+    expect(source).toContain("risk.status === 'unavailable'");
+    expect(source).toContain('Missing or stale inputs are not treated as zero.');
+  });
+});
+
 describe('margin tranche quantity display', () => {
   it('uses canonical qty first and supports legacy shares and broker quantity fields', () => {
     expect(getMarginTrancheQuantity({ qty: 5, shares: 9, quantity: 12 })).toBe(5);
@@ -517,8 +528,11 @@ describe('cross-device financial header hierarchy', () => {
 describe('Combined Margin data quality and position comparison', () => {
   it('shows input quality and adds a separate position comparison surface', () => {
     const source = readFileSync(new URL('./SummaryMetricsGrid.tsx', import.meta.url), 'utf8');
-    expect(source).toContain('class="portfolio-data-quality-summary"');
-    expect(source).toContain('data-valuation-quality={dataQualityLabel}');
+    expect(source).toContain('className="portfolio-data-quality-summary"');
+    expect(source).toContain('status={dataQualityStatus}');
+    expect(source).toContain('statusLabel={translateText(dataQualityLabel, getAppLanguage())}');
+    const noticeSource = readFileSync(new URL('./DataQualityNotice.tsx', import.meta.url), 'utf8');
+    expect(noticeSource).toContain('data-valuation-quality={statusLabel}');
     expect(source).toContain('marginQuoteIssueTickers.map');
     expect(source).toContain("view: 'BALANCE'");
     expect(source).toContain("translateText('Missing or stale inputs are not treated as zero.'");
