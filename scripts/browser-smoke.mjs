@@ -53,6 +53,7 @@ async function mockWorkerApi(page) {
   let historyExists = false;
   let historyCiphertext = '';
   let failNextBrokerAccount = false;
+  let includeSyntheticClosedSale = false;
   let failNextBrokerTrades = false;
   let failNextStateConflict = false;
   const nextActionDelayMs = new Map();
@@ -98,18 +99,19 @@ async function mockWorkerApi(page) {
       curr_c: 'USD',
       commiss: '0.10',
       profit: '0'
-    }, {
-      trade_id: 'smoke-sell-aapl-1',
-      instr_nm: 'AAPL.US',
-      type: '2',
-      quantity: '5',
-      p: '11',
-      date: '2026-11-02T11:00:00.000Z',
-      v: '55',
-      curr_c: 'USD',
-      commiss: '0.10',
-      profit: '5'
     }] } }
+  };
+  const closedSalePayload = {
+    trade_id: 'smoke-sell-aapl-1',
+    instr_nm: 'AAPL.US',
+    type: '2',
+    quantity: '5',
+    p: '11',
+    date: '2026-11-02T11:00:00.000Z',
+    v: '55',
+    curr_c: 'USD',
+    commiss: '0.10',
+    profit: '5'
   };
   const json = async (route, status, payload, extraHeaders = {}, call = null) => {
     if (call) call.responseStatus = status;
@@ -243,7 +245,16 @@ async function mockWorkerApi(page) {
             await json(route, 503, { error: 'Trade history source unavailable in smoke test.' }, {}, call);
             return;
           }
-          await json(route, 200, tradesPayload, {}, call);
+          const payload = includeSyntheticClosedSale
+            ? {
+                data: {
+                  trades: {
+                    trade: [...tradesPayload.data.trades.trade, closedSalePayload]
+                  }
+                }
+              }
+            : tradesPayload;
+          await json(route, 200, payload, {}, call);
           return;
         }
         case 'freedom-orders':
@@ -388,6 +399,7 @@ async function mockWorkerApi(page) {
     count: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname).length,
     countAction: (action) => calls.filter((call) => call.action === action).length,
     failNextBrokerAccount: () => { failNextBrokerAccount = true; },
+    enableSyntheticClosedSale: () => { includeSyntheticClosedSale = true; },
     failNextBrokerTrades: () => { failNextBrokerTrades = true; },
     delayNextAction: (action, durationMs) => {
       if (typeof action !== 'string' || !Number.isFinite(durationMs) || durationMs < 0 || durationMs > 10_000) {
@@ -1568,6 +1580,7 @@ try {
 
   await assertManyTickerNavigation(page);
   await page.setViewportSize({ width: 1440, height: 900 });
+  }
   await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
   const aaplRow = page.locator('#activeTranchesTable .active-tranche-row').filter({ hasText: 'AAPL' });
@@ -1634,13 +1647,21 @@ try {
     'guest snapshot and active assignment ledger publication'
   );
 
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    // Keep the before-change comparison on its original buy-only fixture. The
+    // PR build adds one synthetic completed sale so it can verify last-known-good
+    // closed-history rows after an explicit provider failure.
+    worker.enableSyntheticClosedSale();
+  }
   await page.getByRole('button', { name: 'Trades' }).click();
   await page.locator('#closedHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
-  await page.locator('#closedTradesHistory article').first().waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Administrator Closed History desk');
   await assertResponsiveSurface(page, '#closedHistoryContainer', 'Administrator Closed History desk');
 
-  // Exercise the delayed Trades header indicator against a controllable provider.
+  if (process.env.UX_EXPECT_NEW_HEADER !== 'false') {
+    await page.locator('#closedTradesHistory article').first().waitFor({ state: 'visible', timeout: 20_000 });
+
+    // Exercise the delayed Trades header indicator against a controllable provider.
   // A short explicit refresh must not flash; a slow one must appear and remain
   // visible for its minimum display interval; a failed refresh must retain rows.
   await waitForCondition(() => {
