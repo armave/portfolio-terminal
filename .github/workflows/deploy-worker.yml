@@ -43,6 +43,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
+      actions: read
       contents: read
     environment:
       name: cloudflare-production
@@ -82,6 +83,13 @@ jobs:
           wranglerVersion: '4.156.0'
           command: deploy --var DEPLOYMENT_SHA:${{ github.sha }} --dry-run
 
+      - name: Require successful security validation for this exact main commit
+        id: require_security_success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: bash .github/scripts/require-main-push-security-success.sh
+
       - name: Deploy Worker with pinned Wrangler
         id: deploy_worker
         uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
@@ -111,6 +119,7 @@ jobs:
         if: always()
         env:
           DRY_RUN_RESULT: ${{ steps.worker_dry_run.outcome || 'not-run' }}
+          SECURITY_RUN_ID: ${{ steps.require_security_success.outputs.security_run_id || 'not-verified' }}
           DEPLOY_RESULT: ${{ steps.deploy_worker.outcome || 'not-run' }}
           VERIFY_RESULT: ${{ steps.verify_worker.outcome || 'not-run' }}
         run: |
@@ -122,6 +131,7 @@ jobs:
             echo "| Deployed commit candidate | $(git rev-parse HEAD) |"
             echo "| Ref | $GITHUB_REF |"
             echo "| Dry-run validation | $DRY_RUN_RESULT |"
+            echo "| Same-commit security run | $SECURITY_RUN_ID |"
             echo "| Deployment | $DEPLOY_RESULT |"
             echo "| Post-deployment health/version verification | $VERIFY_RESULT |"
             echo "| Workflow run | $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID |"
