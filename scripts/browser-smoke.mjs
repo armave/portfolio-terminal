@@ -53,7 +53,9 @@ async function mockWorkerApi(page) {
   let historyExists = false;
   let historyCiphertext = '';
   let failNextBrokerAccount = false;
+  let failNextBrokerTrades = false;
   let failNextStateConflict = false;
+  const nextActionDelayMs = new Map();
   let brokerAccountFailures = 0;
   let stateConflictCount = 0;
   let guestPublication = null;
@@ -221,9 +223,18 @@ async function mockWorkerApi(page) {
           }
           await json(route, 200, accountPayload, {}, call);
           return;
-        case 'freedom-trades':
+        case 'freedom-trades': {
+          const delayMs = nextActionDelayMs.get(call.action) || 0;
+          nextActionDelayMs.delete(call.action);
+          if (delayMs > 0) await delay(delayMs);
+          if (failNextBrokerTrades) {
+            failNextBrokerTrades = false;
+            await json(route, 503, { error: 'Trade history source unavailable in smoke test.' }, {}, call);
+            return;
+          }
           await json(route, 200, tradesPayload, {}, call);
           return;
+        }
         case 'freedom-orders':
           await json(route, 200, { ok: true, data: { orders: { order: [] } } }, {}, call);
           return;
@@ -366,6 +377,13 @@ async function mockWorkerApi(page) {
     count: (method, pathname) => calls.filter((call) => call.method === method && call.pathname === pathname).length,
     countAction: (action) => calls.filter((call) => call.action === action).length,
     failNextBrokerAccount: () => { failNextBrokerAccount = true; },
+    failNextBrokerTrades: () => { failNextBrokerTrades = true; },
+    delayNextAction: (action, durationMs) => {
+      if (typeof action !== 'string' || !Number.isFinite(durationMs) || durationMs < 0 || durationMs > 10_000) {
+        throw new Error('Invalid smoke action delay.');
+      }
+      nextActionDelayMs.set(action, durationMs);
+    },
     failNextStateConflict: () => { failNextStateConflict = true; },
     brokerAccountFailures: () => brokerAccountFailures,
     stateConflictCount: () => stateConflictCount,
@@ -1607,8 +1625,72 @@ try {
 
   await page.getByRole('button', { name: 'Trades' }).click();
   await page.locator('#closedHistoryContainer').waitFor({ state: 'visible', timeout: 20_000 });
+  await page.locator('#closedTradesHistory article').first().waitFor({ state: 'visible', timeout: 20_000 });
   await assertVisibleControlsHaveNames(page, 'Administrator Closed History desk');
   await assertResponsiveSurface(page, '#closedHistoryContainer', 'Administrator Closed History desk');
+
+  // Exercise the delayed Trades header indicator against a controllable provider.
+  // A short explicit refresh must not flash; a slow one must appear and remain
+  // visible for its minimum display interval; a failed refresh must retain rows.
+  const refreshHistoryButton = page.getByRole('button', { name: 'Refresh history' });
+  const refreshIndicator = page.getByRole('status', { name: 'Refreshing TradeNet execution history…' });
+  if (await refreshIndicator.isVisible()) {
+    throw new Error('Cached Trades mount must not show the explicit provider-refresh indicator.');
+  }
+
+  const quickRefreshBefore = worker.countAction('freedom-trades');
+  worker.delayNextAction('freedom-trades', 150);
+  await refreshHistoryButton.click();
+  await waitForCondition(
+    () => worker.countAction('freedom-trades') > quickRefreshBefore,
+    'short explicit Trades provider refresh request'
+  );
+  await waitForCondition(() => {
+    const latest = worker.calls.filter((call) => call.action === 'freedom-trades').at(-1);
+    return latest?.responseStatus !== undefined;
+  }, 'short Trades provider refresh completion');
+  if (await refreshIndicator.isVisible()) {
+    throw new Error('A short Trades refresh must not flash the header indicator.');
+  }
+
+  const slowRefreshBefore = worker.countAction('freedom-trades');
+  worker.delayNextAction('freedom-trades', 1_100);
+  await refreshHistoryButton.click();
+  await waitForCondition(
+    () => worker.countAction('freedom-trades') > slowRefreshBefore,
+    'slow explicit Trades provider refresh request'
+  );
+  await refreshIndicator.waitFor({ state: 'visible', timeout: 5_000 });
+  await waitForCondition(() => {
+    const latest = worker.calls.filter((call) => call.action === 'freedom-trades').at(-1);
+    return latest?.responseStatus !== undefined;
+  }, 'slow Trades provider refresh completion');
+  if (!(await refreshIndicator.isVisible())) {
+    throw new Error('A slow Trades refresh must remain visible for its minimum display interval.');
+  }
+  await refreshIndicator.waitFor({ state: 'hidden', timeout: 10_000 });
+
+  const rowsBeforeFailedRefresh = await page.locator('#closedTradesHistory article').count();
+  const failedRefreshBefore = worker.countAction('freedom-trades');
+  worker.failNextBrokerTrades();
+  await refreshHistoryButton.click();
+  await waitForCondition(
+    () => worker.countAction('freedom-trades') > failedRefreshBefore,
+    'failed Trades provider refresh request'
+  );
+  await waitForCondition(() => {
+    const latest = worker.calls.filter((call) => call.action === 'freedom-trades').at(-1);
+    return latest?.responseStatus === 503;
+  }, 'failed Trades provider refresh response');
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#closedHistoryContainer button[aria-label="Refresh history"]');
+    return button instanceof HTMLButtonElement && !button.disabled;
+  }, null, { timeout: 10_000 });
+  const rowsAfterFailedRefresh = await page.locator('#closedTradesHistory article').count();
+  if (rowsAfterFailedRefresh !== rowsBeforeFailedRefresh || rowsAfterFailedRefresh === 0) {
+    throw new Error('A failed Trades refresh must preserve all last-known-good history rows.');
+  }
+
   await page.getByRole('button', { name: /balance/i }).click();
   await page.locator('#cashCushionContainer').waitFor({ state: 'visible', timeout: 20_000 });
 
