@@ -15,7 +15,7 @@ This contract scopes browser-local portfolio data. It does **not** create indepe
 | `offline` | Unauthenticated use after scoped storage has been activated | Starts empty and cannot fall back to the previous authenticated workspace |
 | `legacy` | Pre-migration browser data | Used only before scoped storage has been activated; copied into `owner` on the first administrator activation |
 
-Snapshots, broker rules, and the broker-execution/cashflow history sidecar use the active scope. The history sidecar has a separate IndexedDB database per scope, with the bounded localStorage fallback using the same namespace.
+Snapshots, broker rules, and the broker-execution/cashflow history sidecar use the active scope. Portfolio snapshot recovery and closed history share the same account-scoped IndexedDB database but use separate records. The compact active portfolio snapshot remains in localStorage for the synchronous PortfolioStore commit boundary; its full last-known-good copy is stored in IndexedDB rather than duplicated in localStorage. The broker-execution/cashflow history sidecar also uses IndexedDB, with its existing bounded localStorage fallback using the same namespace.
 
 Device-level preferences such as the selected desk and the administrator/guest quote-refresh interval remain device preferences. The Gateway Secret remains in its existing device-secure credential store; it is not copied into portfolio workspace snapshots.
 
@@ -38,7 +38,7 @@ A failed identity lookup invalidates the session, moves to the offline namespace
 - `PortfolioStore.importState()` remains the normal same-workspace restore path. It preserves append-only transaction, corporate-action, and market-history journals and rejects conflicting history.
 - `PortfolioStore.replaceWorkspace()` is reserved for switching authenticated local storage scopes. It replaces the in-memory state and its journals instead of merging events from the previous identity.
 - `PortfolioStore.replaceFromConfirmedCloudPull()` is a separate, user-confirmed same-workspace recovery boundary. Settings shows the backup warning/confirmation before invoking it; the validated cloud snapshot replaces the local snapshot and journals instead of merging conflicting event identities. Ordinary startup/background pulls must continue using `importState()`.
-- Portfolio reset semantics are unchanged: reset within a workspace retains that workspace's append-only transaction journal and writes its reset marker.
+- Portfolio reset semantics are unchanged: reset within a workspace retains that workspace's append-only transaction journal and writes its reset marker. The IndexedDB portfolio recovery row advances to the reset generation so damaged data cannot resurrect pre-reset positions.
 - Pending history writes retain their captured storage scope and are drained before the active scope changes. They cannot be redirected into the next account's history database.
 - Concurrent storage activations are serialized; an older authentication response cannot reactivate a prior workspace or re-enable administrator cloud writes after a newer login.
 - If localStorage is unavailable, the browser starts or switches to an in-memory offline scope rather than falling back to unscoped legacy data.
@@ -71,7 +71,9 @@ This repair does not sign the user out and does not clear localStorage, sessionS
 
 ## Local recovery copies
 
-The active portfolio snapshot, broker assumptions, and closed-history cache retain a scoped last-known-good copy. Startup validates the active record before use; when it is malformed, it restores the last-known-good copy from the same account namespace and repairs the active record when storage permits. IndexedDB history keeps its recovery row in the same scoped database, with a bounded localStorage recovery copy when IndexedDB is unavailable.
+Portfolio snapshot recovery is account-scoped in IndexedDB. On workspace activation, the app migrates any existing localStorage last-known-good snapshot into the same scoped IndexedDB database used by closed history. The local duplicate is removed only after both IndexedDB snapshot records commit successfully. If IndexedDB is blocked or unavailable, the local recovery copy is retained and remains readable. New portfolio saves synchronously replace only the active localStorage snapshot, then queue an atomic IndexedDB update that retains the previous valid snapshot as the recovery row. This keeps the existing synchronous PortfolioStore commit boundary without requiring two full portfolio JSON copies in localStorage.
+
+Broker assumptions and the closed-history cache also retain scoped recovery data. Startup validates each active record before use; malformed snapshots restore from the matching account namespace. Closed history keeps its recovery row in the same scoped database, with the existing bounded localStorage recovery copy when IndexedDB is unavailable.
 
 Recovery copies are not merged into financial records. They restore one complete prior valid version only; they do not infer missing trades, combine divergent positions, or reconcile independently edited offline tabs. An explicit portfolio reset writes a blank recovery baseline so a later repair cannot resurrect pre-reset holdings or history. Clearing local data removes the corresponding portfolio and broker-rule recovery copies.
 
