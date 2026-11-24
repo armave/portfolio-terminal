@@ -1,6 +1,7 @@
 // Shared with the Cloudflare Worker live Market Depth stream; keep this path in deploy-worker.yml.
 import { createFreedomMarketDepthBook } from "./src/services/freedomMarketDepth.js";
 import { logServerDiagnostic } from "./safeServerDiagnostics.js";
+import { createTenantKeyRecord, isTenantKeyRecordValid, isTenantKmsConfigured } from "./tenant-key-service.js";
 
 const CORS_HEADERS = {
   "Content-Type": "application/json",
@@ -34,6 +35,11 @@ const FREEDOM_DEPTH_STREAM_HANDSHAKE_TIMEOUT_MS = 10_000;
 const FREEDOM_DEPTH_STREAM_MAX_SESSIONS = 4;
 const FREEDOM_DEPTH_STREAM_MAX_MESSAGE_BYTES = 256 * 1024;
 const FREEDOM_DEPTH_STREAM_MAX_PENDING_UPDATES = 20;
+// SQLite-backed Durable Object rows are smaller than the Worker request limit.
+// Keep each encrypted state/history chunk comfortably below the row ceiling.
+const CLOUD_RECORD_MAX_BYTES = 20 * 1024 * 1024;
+const CLOUD_RECORD_CHUNK_BYTES = 256 * 1024;
+const CLOUD_RECORD_CHUNK_FORMAT = "cloud-record-chunks-v1";
 
 async function fetchFreedomTradeNetWebSocket(url) {
   const controller = new AbortController();
@@ -102,6 +108,10 @@ const AUTH_USER_SESSION_INDEX_PREFIX = "auth:user-sessions:";
 
 const TENANT_DIRECTORY_KEY = "tenant:directory:v1";
 const TENANT_AUDIT_PREFIX = "tenant:audit:v1:";
+const TENANT_KEY_RECORD_PREFIX = "tenant:key:v1:";
+const TENANT_KEY_ACTIVE_PREFIX = "tenant:key-active:v1:";
+const TENANT_KEY_PROVISIONING_PREFIX = "tenant:key-provisioning:v1:";
+const TENANT_KEY_PROVISIONING_STALE_MS = 2 * 60 * 1000;
 const LEGACY_TENANT_ID = "legacy-tenant-v1";
 const LEGACY_WORKSPACE_ID = "legacy-workspace-v1";
 const LEGACY_PORTFOLIO_ID = "legacy-portfolio-v1";
@@ -132,17 +142,179 @@ const TENANT_ROLE_CAPABILITIES = Object.freeze({
   guest: ["portfolio.projection.read"]
 });
 
+function isTenantDirectoryObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isTenantDirectoryId(value) {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{8,80}$/.test(value);
+}
+
+function isTenantDirectoryActorId(value) {
+  return value === null || (typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value));
+}
+
+function isTenantDirectoryTimestamp(value) {
+  return typeof value === "string" && value.length <= 80 && Number.isFinite(Date.parse(value));
+}
+
+function hasTenantDirectoryCapabilities(value, expected) {
+  return Array.isArray(value) &&
+    value.length === expected.length &&
+    value.every((capability) => typeof capability === "string") &&
+    new Set(value).size === value.length &&
+    expected.every((capability) => value.includes(capability));
+}
+
+function hasTenantDirectoryOptionalMetadata(value) {
+  return isTenantDirectoryTimestamp(value.createdAt) &&
+    isTenantDirectoryActorId(value.createdBy) &&
+    (value.updatedAt === undefined || isTenantDirectoryTimestamp(value.updatedAt)) &&
+    (value.legacy === undefined || typeof value.legacy === "boolean");
+}
+
 function isTenantDirectoryRecord(value) {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value) &&
-    value.version === 1 && Number.isSafeInteger(value.revision) && value.revision >= 1 &&
-    Array.isArray(value.tenants) && Array.isArray(value.workspaces) &&
-    Array.isArray(value.portfolios) && Array.isArray(value.memberships) &&
-    Array.isArray(value.grants) &&
-    value.tenants.length <= TENANT_DIRECTORY_MAX_TENANTS &&
-    value.workspaces.length <= TENANT_DIRECTORY_MAX_WORKSPACES &&
-    value.portfolios.length <= TENANT_DIRECTORY_MAX_PORTFOLIOS &&
-    value.memberships.length <= TENANT_DIRECTORY_MAX_MEMBERSHIPS &&
-    value.grants.length <= TENANT_DIRECTORY_MAX_GRANTS);
+  if (!isTenantDirectoryObject(value) ||
+      value.version !== 1 || !Number.isSafeInteger(value.revision) || value.revision < 1 ||
+      !Array.isArray(value.tenants) || !Array.isArray(value.workspaces) ||
+      !Array.isArray(value.portfolios) || !Array.isArray(value.memberships) ||
+      !Array.isArray(value.grants) ||
+      value.tenants.length < 1 || value.tenants.length > TENANT_DIRECTORY_MAX_TENANTS ||
+      value.workspaces.length > TENANT_DIRECTORY_MAX_WORKSPACES ||
+      value.portfolios.length > TENANT_DIRECTORY_MAX_PORTFOLIOS ||
+      value.memberships.length > TENANT_DIRECTORY_MAX_MEMBERSHIPS ||
+      value.grants.length > TENANT_DIRECTORY_MAX_GRANTS ||
+      (value.createdAt !== undefined && !isTenantDirectoryTimestamp(value.createdAt)) ||
+      (value.updatedAt !== undefined && !isTenantDirectoryTimestamp(value.updatedAt))) {
+    return false;
+  }
+
+  const tenants = new Map();
+  for (const tenant of value.tenants) {
+    if (!isTenantDirectoryObject(tenant) ||
+        !isTenantDirectoryId(tenant.id) || tenants.has(tenant.id) ||
+        normalizeTenantDisplayName(tenant.name) !== tenant.name ||
+        !["active", "archived"].includes(tenant.status) ||
+        !hasTenantDirectoryOptionalMetadata(tenant)) {
+      return false;
+    }
+    tenants.set(tenant.id, tenant);
+  }
+
+  const workspaces = new Map();
+  for (const workspace of value.workspaces) {
+    if (!isTenantDirectoryObject(workspace) ||
+        !isTenantDirectoryId(workspace.id) || workspaces.has(workspace.id) ||
+        !tenants.has(workspace.tenantId) ||
+        normalizeTenantDisplayName(workspace.name) !== workspace.name ||
+        !["active", "archived"].includes(workspace.status) ||
+        !hasTenantDirectoryOptionalMetadata(workspace)) {
+      return false;
+    }
+    workspaces.set(workspace.id, workspace);
+  }
+
+  const portfolios = new Map();
+  for (const portfolio of value.portfolios) {
+    const workspace = isTenantDirectoryObject(portfolio)
+      ? workspaces.get(portfolio.workspaceId)
+      : null;
+    if (!isTenantDirectoryObject(portfolio) ||
+        !isTenantDirectoryId(portfolio.id) || portfolios.has(portfolio.id) ||
+        !tenants.has(portfolio.tenantId) || !workspace ||
+        workspace.tenantId !== portfolio.tenantId ||
+        normalizeTenantDisplayName(portfolio.name) !== portfolio.name ||
+        !["active", "archived"].includes(portfolio.status) ||
+        !hasTenantDirectoryOptionalMetadata(portfolio)) {
+      return false;
+    }
+    portfolios.set(portfolio.id, portfolio);
+  }
+
+  const memberships = new Map();
+  for (const membership of value.memberships) {
+    if (!isTenantDirectoryObject(membership) ||
+        !tenants.has(membership.tenantId) ||
+        typeof membership.userId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(membership.userId) ||
+        !Object.prototype.hasOwnProperty.call(TENANT_ROLE_CAPABILITIES, membership.role) ||
+        !["active", "revoked"].includes(membership.status) ||
+        !Number.isSafeInteger(membership.membershipVersion) || membership.membershipVersion < 1 ||
+        !hasTenantDirectoryCapabilities(membership.capabilities, TENANT_ROLE_CAPABILITIES[membership.role]) ||
+        !hasTenantDirectoryOptionalMetadata(membership)) {
+      return false;
+    }
+    const key = membership.tenantId + "\u0000" + membership.userId;
+    if (memberships.has(key)) return false;
+    memberships.set(key, membership);
+  }
+
+  const activeGrantKeys = new Set();
+  const activeGrantsByMembership = new Map();
+  const managerGrantCapabilities = TENANT_ROLE_CAPABILITIES.manager.filter((capability) =>
+    capability.startsWith("portfolio.")
+  );
+  const investorGrantCapabilities = TENANT_ROLE_CAPABILITIES.investor.filter((capability) =>
+    capability.startsWith("portfolio.")
+  );
+  const guestGrantCapabilities = ["portfolio.projection.read"];
+
+  for (const grant of value.grants) {
+    if (!isTenantDirectoryObject(grant) ||
+        !tenants.has(grant.tenantId) ||
+        typeof grant.userId !== "string" ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(grant.userId) ||
+        !["active", "revoked"].includes(grant.status) ||
+        !Number.isSafeInteger(grant.membershipVersion) || grant.membershipVersion < 1 ||
+        !hasTenantDirectoryOptionalMetadata(grant) ||
+        !portfolios.has(grant.portfolioId) ||
+        portfolios.get(grant.portfolioId).tenantId !== grant.tenantId) {
+      return false;
+    }
+
+    const membershipKey = grant.tenantId + "\u0000" + grant.userId;
+    const membership = memberships.get(membershipKey);
+    if (!membership) return false;
+
+    const isProjectionGrant = grant.scope === "projection" &&
+      hasTenantDirectoryCapabilities(grant.capabilities, guestGrantCapabilities);
+    const isPortfolioGrant = grant.scope === "portfolio" &&
+      (hasTenantDirectoryCapabilities(grant.capabilities, managerGrantCapabilities) ||
+        hasTenantDirectoryCapabilities(grant.capabilities, investorGrantCapabilities));
+    if (!isProjectionGrant && !isPortfolioGrant) return false;
+
+    if (grant.status === "active") {
+      if (membership.status !== "active" ||
+          grant.membershipVersion !== membership.membershipVersion ||
+          (membership.role === "guest" && !isProjectionGrant) ||
+          (membership.role !== "guest" && membership.role !== "owner" && !isPortfolioGrant) ||
+          membership.role === "owner" ||
+          (membership.role === "manager" &&
+            !hasTenantDirectoryCapabilities(grant.capabilities, managerGrantCapabilities)) ||
+          (membership.role === "investor" &&
+            !hasTenantDirectoryCapabilities(grant.capabilities, investorGrantCapabilities))) {
+        return false;
+      }
+      const grantKey = membershipKey + "\u0000" + grant.portfolioId;
+      if (activeGrantKeys.has(grantKey)) return false;
+      activeGrantKeys.add(grantKey);
+      activeGrantsByMembership.set(membershipKey, (activeGrantsByMembership.get(membershipKey) || 0) + 1);
+    }
+  }
+
+  for (const [membershipKey, membership] of memberships) {
+    const activeGrantCount = activeGrantsByMembership.get(membershipKey) || 0;
+    if (membership.status !== "active" && activeGrantCount !== 0) return false;
+    if (membership.status === "active" && membership.role === "owner" && activeGrantCount !== 0) return false;
+    if (membership.status === "active" && membership.role === "guest" && activeGrantCount !== 1) return false;
+    if (membership.status === "active" &&
+        (membership.role === "manager" || membership.role === "investor") &&
+        activeGrantCount < 1) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function normalizeTenantDisplayName(value, fallback = "") {
@@ -180,6 +352,70 @@ function toHex(bytes) {
 }
 async function digestHex(value) {
   return toHex(await crypto.subtle.digest("SHA-256", authEncoder.encode(value)));
+}
+
+function cloudRecordChunkKey(recordKey, revision, index) {
+  return `${recordKey}:chunk:${revision}:${index}`;
+}
+
+function isChunkedCloudRecord(record) {
+  return Boolean(
+    record && typeof record === "object" &&
+    record.format === CLOUD_RECORD_CHUNK_FORMAT &&
+    Number.isSafeInteger(record.revision) && record.revision > 0 &&
+    Number.isSafeInteger(record.byteLength) && record.byteLength > CLOUD_RECORD_CHUNK_BYTES &&
+    record.byteLength <= CLOUD_RECORD_MAX_BYTES &&
+    Number.isSafeInteger(record.chunkCount) &&
+    record.chunkCount === Math.ceil(record.byteLength / CLOUD_RECORD_CHUNK_BYTES) &&
+    record.chunkCount <= Math.ceil(CLOUD_RECORD_MAX_BYTES / CLOUD_RECORD_CHUNK_BYTES) &&
+    typeof record.sha256 === "string" && /^[a-f0-9]{64}$/.test(record.sha256)
+  );
+}
+
+function encodeCloudRecordChunk(bytes) {
+  let binary = "";
+  for (let offset = 0; offset < bytes.byteLength; offset += 32 * 1024) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 32 * 1024, bytes.byteLength)));
+  }
+  return btoa(binary);
+}
+
+function decodeCloudRecordChunk(value, expectedByteLength) {
+  if (typeof value !== "string") return null;
+  let binary;
+  try {
+    binary = atob(value);
+  } catch {
+    return null;
+  }
+  if (binary.length !== expectedByteLength) return null;
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+async function readChunkedCloudRecordPayload(storage, recordKey, record) {
+  if (!isChunkedCloudRecord(record)) throw new Error("Stored cloud record manifest is invalid.");
+  const chunks = await Promise.all(Array.from({ length: record.chunkCount }, (_, index) =>
+    storage.get(cloudRecordChunkKey(recordKey, record.revision, index))
+  ));
+  const bytes = new Uint8Array(record.byteLength);
+  let offset = 0;
+  for (let index = 0; index < chunks.length; index += 1) {
+    const expectedLength = Math.min(CLOUD_RECORD_CHUNK_BYTES, record.byteLength - offset);
+    const decoded = decodeCloudRecordChunk(chunks[index], expectedLength);
+    if (!decoded) throw new Error("Stored cloud record chunk is missing or malformed.");
+    bytes.set(decoded, offset);
+    offset += decoded.byteLength;
+  }
+  if (offset !== record.byteLength) throw new Error("Stored cloud record length does not match its manifest.");
+  const payload = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  if (await digestHex(payload) !== record.sha256) {
+    throw new Error("Stored cloud record checksum does not match its manifest.");
+  }
+  return payload;
 }
 async function derivePasswordHash(password, salt) {
   // Cloudflare Workers rejects a single PBKDF2 deriveBits call above 100,000
@@ -692,6 +928,7 @@ export class PortfolioStateDO {
     const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
+      if (response.status === 401 || response.status === 403) this.invalidateFreedomTradeNetSession(sid);
       const error = new Error("TradeNet rejected the Market Depth WebSocket connection.");
       error.status = response.status === 401 || response.status === 403 ? response.status : 502;
       throw error;
@@ -720,7 +957,7 @@ export class PortfolioStateDO {
     });
 
     socket.addEventListener("message", event => {
-      void this.handleFreedomMarketDepthUpstreamMessage(session, socket, event?.data);
+      void this.handleFreedomMarketDepthUpstreamMessage(session, socket, event?.data, sid);
     });
     socket.addEventListener("close", event => {
       if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
@@ -758,7 +995,7 @@ export class PortfolioStateDO {
     }
   }
 
-  async handleFreedomMarketDepthUpstreamMessage(session, socket, rawMessage) {
+  async handleFreedomMarketDepthUpstreamMessage(session, socket, rawMessage, sid) {
     if (this.freedomDepthStreams.get(session.streamId) !== session || session.upstream !== socket) return;
     const text = typeof rawMessage === "string" ? rawMessage : String(rawMessage || "");
     if (new TextEncoder().encode(text).byteLength > FREEDOM_DEPTH_STREAM_MAX_MESSAGE_BYTES) {
@@ -774,6 +1011,7 @@ export class PortfolioStateDO {
       const userData = packet[1];
       const mode = String(userData?.mode || "").trim().toLowerCase();
       if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        this.invalidateFreedomTradeNetSession(sid);
         const error = new Error("TradeNet authenticated a demo or non-production Market Depth session.");
         session.waiter?.reject(error);
         this.sendFreedomMarketDepthError(session, error.message);
@@ -925,6 +1163,7 @@ export class PortfolioStateDO {
     const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
+      if (response.status === 401 || response.status === 403) this.invalidateFreedomTradeNetSession(sid);
       const error = new Error("TradeNet rejected the persistent portfolio/orders WebSocket connection.");
       error.status = response.status === 401 || response.status === 403 ? response.status : 502;
       throw error;
@@ -960,7 +1199,7 @@ export class PortfolioStateDO {
     });
 
     socket.addEventListener("message", (event) => {
-      void this.handleFreedomAccountUpstreamMessage(socket, event?.data);
+      void this.handleFreedomAccountUpstreamMessage(socket, event?.data, sid);
     });
     socket.addEventListener("close", () => {
       if (this.freedomAccountUpstream !== socket) return;
@@ -1014,11 +1253,18 @@ export class PortfolioStateDO {
       const number = Number(value);
       return Number.isFinite(number) ? number : null;
     };
-    const usdRows = (rows) => rows.filter((row) =>
-      row && typeof row === "object" && !Array.isArray(row) &&
-      String(row.curr ?? row.base_currency ?? "").toUpperCase() === "USD"
-    );
+    const usdRows = (rows) => rows.flatMap((row) => {
+      if (!row || typeof row !== "object" || Array.isArray(row)) return [{ curr: "" }];
+      const currency = String(row.curr ?? row.base_currency ?? "").trim().toUpperCase();
+      // Keep an empty-currency marker so the client adapter can classify the
+      // snapshot as partial instead of treating an unknown-currency row as absent.
+      if (!currency) return [{ curr: "" }];
+      return currency === "USD" ? [row] : [];
+    });
     const acc = usdRows(source.acc).map((row) => {
+      if (String(row.curr ?? row.base_currency ?? "").trim().toUpperCase() !== "USD") {
+        return { curr: "" };
+      }
       const amount = numberOrNull(row.s) ?? numberOrNull(row.currval);
       if (amount === null) throw new Error("TradeNet account stream contains a USD balance without a valid amount.");
       return {
@@ -1032,6 +1278,9 @@ export class PortfolioStateDO {
       };
     });
     const pos = usdRows(source.pos).map((row) => {
+      if (String(row.curr ?? row.base_currency ?? "").trim().toUpperCase() !== "USD") {
+        return { curr: "" };
+      }
       const quantity = numberOrNull(row.q);
       if (quantity === null) throw new Error("TradeNet account stream contains a USD position without a valid signed quantity.");
       const ticker = String(row.i ?? row.base_contract_code ?? "").trim();
@@ -1136,7 +1385,7 @@ export class PortfolioStateDO {
     };
   }
 
-  async handleFreedomAccountUpstreamMessage(socket, rawMessage) {
+  async handleFreedomAccountUpstreamMessage(socket, rawMessage, sid) {
     if (this.freedomAccountUpstream !== socket) return;
     let packet;
     try {
@@ -1150,6 +1399,7 @@ export class PortfolioStateDO {
       const userData = packet[1];
       const mode = String(userData?.mode || "").trim().toLowerCase();
       if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        this.invalidateFreedomTradeNetSession(sid);
         const error = new Error("TradeNet authenticated a demo or non-production account stream.");
         this.freedomAccountUpstreamWaiter?.reject(error);
         this.freedomAccountUpstreamReady = false;
@@ -1296,6 +1546,7 @@ export class PortfolioStateDO {
     const response = await fetchFreedomTradeNetWebSocket(url.toString());
     const socket = response.webSocket;
     if (response.status !== 101 || !socket) {
+      if (response.status === 401 || response.status === 403) this.invalidateFreedomTradeNetSession(sid);
       const error = new Error("TradeNet rejected the persistent quote WebSocket connection.");
       error.status = response.status === 401 || response.status === 403 ? response.status : 502;
       throw error;
@@ -1329,7 +1580,7 @@ export class PortfolioStateDO {
     });
 
     socket.addEventListener("message", (event) => {
-      void this.handleFreedomQuoteUpstreamMessage(socket, event?.data);
+      void this.handleFreedomQuoteUpstreamMessage(socket, event?.data, sid);
     });
     socket.addEventListener("close", () => {
       if (this.freedomQuoteUpstream !== socket) return;
@@ -1370,7 +1621,7 @@ export class PortfolioStateDO {
     }
   }
 
-  async handleFreedomQuoteUpstreamMessage(socket, rawMessage) {
+  async handleFreedomQuoteUpstreamMessage(socket, rawMessage, sid) {
     if (this.freedomQuoteUpstream !== socket) return;
     let packet;
     try {
@@ -1384,6 +1635,7 @@ export class PortfolioStateDO {
       const userData = packet[1];
       const mode = String(userData?.mode || "").trim().toLowerCase();
       if (userData?.isDemo === true || userData?.real === false || mode !== "prod") {
+        this.invalidateFreedomTradeNetSession(sid);
         const error = new Error("TradeNet authenticated a demo or non-production quote session.");
         this.freedomQuoteUpstreamWaiter?.reject(error);
         this.freedomQuoteUpstreamReady = false;
@@ -2934,6 +3186,163 @@ export class PortfolioStateDO {
     });
   }
 
+  async handleTenantKeyProvision(session, tenantId) {
+    const pointerKey = TENANT_KEY_ACTIVE_PREFIX + tenantId;
+    const recordKey = TENANT_KEY_RECORD_PREFIX + tenantId + ":1";
+    const pendingKey = TENANT_KEY_PROVISIONING_PREFIX + tenantId;
+    const reservation = await this.ctx.storage.transaction(async (transaction) => {
+      const directory = await transaction.get(TENANT_DIRECTORY_KEY);
+      if (!isTenantDirectoryRecord(directory)) {
+        return { error: "Tenant directory is unavailable or requires recovery.", status: 503 };
+      }
+      const tenant = directory.tenants.find((item) => item.id === tenantId && item.status === "active");
+      const owner = directory.memberships.find((item) =>
+        item.tenantId === tenantId && item.userId === session.user.id &&
+        item.status === "active" && item.role === "owner" &&
+        item.capabilities?.includes("tenant.members.manage")
+      );
+      if (!tenant || !owner) {
+        return { error: "Tenant not found or key administration is not permitted.", status: 404 };
+      }
+      const pointer = await transaction.get(pointerKey);
+      if (pointer !== undefined) {
+        const record = await transaction.get(
+          TENANT_KEY_RECORD_PREFIX + tenantId + ":" + pointer?.keyVersion
+        );
+        if (!pointer || pointer.version !== 1 || pointer.status !== "active" ||
+            pointer.tenantId !== tenantId || !/^[0-9a-f-]{36}$/i.test(pointer.keyId || "") ||
+            !Number.isSafeInteger(pointer.keyVersion) || pointer.keyVersion < 1 ||
+            !isTenantKeyRecordValid(record, tenantId) ||
+            record.keyId !== pointer.keyId || record.keyVersion !== pointer.keyVersion ||
+            pointer.kmsKeyArn !== record.kmsKeyArn) {
+          return { error: "Tenant key metadata requires recovery; no changes were made.", status: 503 };
+        }
+        return { existing: pointer };
+      }
+      const pending = await transaction.get(pendingKey);
+      if (pending !== undefined) {
+        if (!pending || pending.version !== 1 ||
+            typeof pending.operationId !== "string" || !Number.isFinite(pending.createdAt)) {
+          return { error: "Tenant key provisioning state requires recovery.", status: 503 };
+        }
+        if (Date.now() - pending.createdAt < TENANT_KEY_PROVISIONING_STALE_MS) {
+          return { error: "Tenant key provisioning is already in progress.", status: 409 };
+        }
+      }
+      const operationId = crypto.randomUUID();
+      await transaction.put(pendingKey, { version: 1, operationId, createdAt: Date.now() });
+      return { operationId };
+    });
+    if (reservation.error) return jsonResponse({ error: reservation.error }, reservation.status);
+    if (reservation.existing) {
+      return jsonResponse({
+        success: true,
+        key: {
+          provider: "aws-kms", custody: "managed", encryptionMode: "server-mediated",
+          status: "active", keyId: reservation.existing.keyId,
+          keyVersion: reservation.existing.keyVersion
+        },
+        financialDataEnabled: false,
+        alreadyProvisioned: true
+      });
+    }
+
+    let configured = false;
+    try {
+      configured = isTenantKmsConfigured(this.env);
+    } catch {
+      await this.ctx.storage.transaction(async (transaction) => {
+        const pending = await transaction.get(pendingKey);
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+      });
+      return jsonResponse({ error: "Managed tenant key custody is not configured correctly." }, 503);
+    }
+    if (!configured) {
+      await this.ctx.storage.transaction(async (transaction) => {
+        const pending = await transaction.get(pendingKey);
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+      });
+      return jsonResponse({ error: "Managed tenant key custody is not configured." }, 503);
+    }
+
+    let keyRecord;
+    try {
+      keyRecord = await createTenantKeyRecord(this.env, tenantId);
+    } catch {
+      await this.ctx.storage.transaction(async (transaction) => {
+        const pending = await transaction.get(pendingKey);
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+      });
+      return jsonResponse({ error: "Tenant key provisioning failed; existing data was not changed." }, 503);
+    }
+
+    const committed = await this.ctx.storage.transaction(async (transaction) => {
+      const directory = await transaction.get(TENANT_DIRECTORY_KEY);
+      const pending = await transaction.get(pendingKey);
+      if (!isTenantDirectoryRecord(directory)) {
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+        return { error: "Tenant directory is unavailable or requires recovery.", status: 503 };
+      }
+      const tenant = directory.tenants.find((item) => item.id === tenantId && item.status === "active");
+      const owner = directory.memberships.find((item) =>
+        item.tenantId === tenantId && item.userId === session.user.id &&
+        item.status === "active" && item.role === "owner" &&
+        item.capabilities?.includes("tenant.members.manage")
+      );
+      if (!tenant || !owner) {
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+        return { error: "Tenant not found or key administration is not permitted.", status: 404 };
+      }
+      if (pending?.operationId !== reservation.operationId) {
+        return { error: "Tenant key provisioning changed; refresh and retry.", status: 409 };
+      }
+      const pointer = await transaction.get(pointerKey);
+      if (pointer !== undefined) {
+        if (!pointer || pointer.version !== 1 || pointer.status !== "active" ||
+            pointer.tenantId !== tenantId || !/^[0-9a-f-]{36}$/i.test(pointer.keyId || "") ||
+            !Number.isSafeInteger(pointer.keyVersion) || pointer.keyVersion < 1) {
+          return { error: "Tenant key metadata requires recovery; no changes were made.", status: 503 };
+        }
+        await transaction.delete(pendingKey);
+        return { pointer, alreadyProvisioned: true };
+      }
+      if (await transaction.get(recordKey) !== undefined) {
+        return { error: "Tenant key metadata exists without an active pointer; recovery is required.", status: 503 };
+      }
+      await transaction.put(recordKey, keyRecord);
+      const activePointer = {
+        version: 1, tenantId, keyId: keyRecord.keyId, keyVersion: keyRecord.keyVersion,
+        kmsKeyArn: keyRecord.kmsKeyArn, status: "active", updatedAt: keyRecord.createdAt
+      };
+      await transaction.put(pointerKey, activePointer);
+      await transaction.delete(pendingKey);
+      await transaction.put(tenantAuditKey(), {
+        version: 1, eventId: crypto.randomUUID(), type: "tenant_key_provisioned",
+        provider: "aws-kms", tenantId, keyId: keyRecord.keyId,
+        keyVersion: keyRecord.keyVersion, actorUserId: session.user.id,
+        recordedAt: keyRecord.createdAt
+      });
+      return { pointer: activePointer, alreadyProvisioned: false };
+    });
+    if (committed.error) {
+      await this.ctx.storage.transaction(async (transaction) => {
+        const pending = await transaction.get(pendingKey);
+        if (pending?.operationId === reservation.operationId) await transaction.delete(pendingKey);
+      });
+      return jsonResponse({ error: committed.error }, committed.status);
+    }
+    return jsonResponse({
+      success: true,
+      key: {
+        provider: "aws-kms", custody: "managed", encryptionMode: "server-mediated",
+        status: "active", keyId: committed.pointer.keyId,
+        keyVersion: committed.pointer.keyVersion
+      },
+      financialDataEnabled: false,
+      alreadyProvisioned: Boolean(committed.alreadyProvisioned)
+    }, committed.alreadyProvisioned ? 200 : 201);
+  }
+
   async handleTenantDirectory(request) {
     const session = await this.resolveSession(request);
     if (!session) return jsonResponse({ error: "Authentication required." }, 401);
@@ -2974,6 +3383,14 @@ export class PortfolioStateDO {
     }
     if (!body || typeof body !== "object" || Array.isArray(body)) {
       return jsonResponse({ error: "A valid JSON request body is required." }, 400);
+    }
+
+    const keyProvisionRoute = pathname.match(/^\/api\/tenants\/([A-Za-z0-9_-]{8,80})\/key\/provision$/);
+    if (keyProvisionRoute) {
+      if (Object.keys(body).length !== 0) {
+        return jsonResponse({ error: "Key provisioning does not accept request fields." }, 400);
+      }
+      return this.handleTenantKeyProvision(session, keyProvisionRoute[1]);
     }
 
     if (pathname === "/api/tenants") {
@@ -3424,7 +3841,19 @@ export class PortfolioStateDO {
       if (!record) {
         return jsonResponse({ error: "Portfolio state not found." }, 404, 0);
       }
-      return new Response(record.payload, {
+      let payload = record.payload;
+      if (record.format === CLOUD_RECORD_CHUNK_FORMAT) {
+        try {
+          payload = await readChunkedCloudRecordPayload(this.ctx.storage, recordKey, record);
+        } catch {
+          // Never return a partial snapshot or an empty successful response.
+          return jsonResponse({ error: "Stored cloud record is incomplete or could not be verified." }, 503, record.revision ?? null);
+        }
+      }
+      if (typeof payload !== "string") {
+        return jsonResponse({ error: "Stored cloud record is invalid." }, 503, record.revision ?? null);
+      }
+      return new Response(payload, {
         status: 200,
         headers: { ...CORS_HEADERS, ETag: `"${record.revision}"` }
       });
@@ -3440,7 +3869,7 @@ export class PortfolioStateDO {
     }
 
     const contentLength = Number(request.headers.get("Content-Length") || 0);
-    if (Number.isFinite(contentLength) && contentLength > 20 * 1024 * 1024) {
+    if (Number.isFinite(contentLength) && contentLength > CLOUD_RECORD_MAX_BYTES) {
       return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
     }
     if (request.headers.get("Content-Type")?.toLowerCase().includes("application/json") !== true) {
@@ -3458,7 +3887,7 @@ export class PortfolioStateDO {
           const { done, value } = await bodyReader.read();
           if (done) break;
           receivedBytes += value.byteLength;
-          if (receivedBytes > 20 * 1024 * 1024) {
+          if (receivedBytes > CLOUD_RECORD_MAX_BYTES) {
             await bodyReader.cancel("Cloud state payload exceeds the configured limit.");
             return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
           }
@@ -3520,11 +3949,25 @@ export class PortfolioStateDO {
         (!idempotencyKey || idempotencyKey.length > 180 || !/^[A-Za-z0-9._:-]+$/.test(idempotencyKey))) {
       return jsonResponse({ error: "Invalid Idempotency-Key header." }, 400);
     }
+    // Serialize and size the exact request envelope before opening the storage
+    // transaction. SQLite rows stay small; the public request limit remains 20 MiB.
+    const serializedBody = JSON.stringify(body);
+    const serializedBytes = authEncoder.encode(serializedBody);
+    if (serializedBytes.byteLength > CLOUD_RECORD_MAX_BYTES) {
+      return jsonResponse({ error: "Cloud state payload exceeds the 20 MB limit." }, 413);
+    }
+    const chunkableRecord = recordKey === "record" || recordKey === "historyRecord";
+    const shouldChunkRecord = chunkableRecord && serializedBytes.byteLength > CLOUD_RECORD_CHUNK_BYTES;
+    const cloudChunks = shouldChunkRecord
+      ? Array.from({ length: Math.ceil(serializedBytes.byteLength / CLOUD_RECORD_CHUNK_BYTES) }, (_, index) => {
+          const start = index * CLOUD_RECORD_CHUNK_BYTES;
+          return encodeCloudRecordChunk(serializedBytes.subarray(start, start + CLOUD_RECORD_CHUNK_BYTES));
+        })
+      : [];
     // Hash the exact request envelope, never store ciphertext or financial payloads
-    // a second time in the idempotency receipt.
-    const idempotencyFingerprint = idempotencyKey
-      ? await digestHex(JSON.stringify(body))
-      : null;
+    // a second time in the idempotency receipt or chunk manifest.
+    const serializedDigest = shouldChunkRecord || idempotencyKey ? await digestHex(serializedBody) : null;
+    const idempotencyFingerprint = idempotencyKey ? serializedDigest : null;
     const receiptStorageKey = "cloud-write-idempotency:" + recordKey;
 
     const result = await this.ctx.storage.transaction(async (transactionStorage) => {
@@ -3567,7 +4010,30 @@ export class PortfolioStateDO {
       }
 
       const nextRevision = currentRevision + 1;
-      await transactionStorage.put(recordKey, { payload: JSON.stringify(body), revision: nextRevision });
+      if (shouldChunkRecord) {
+        for (let index = 0; index < cloudChunks.length; index += 1) {
+          await transactionStorage.put(
+            cloudRecordChunkKey(recordKey, nextRevision, index),
+            cloudChunks[index]
+          );
+        }
+        await transactionStorage.put(recordKey, {
+          format: CLOUD_RECORD_CHUNK_FORMAT,
+          revision: nextRevision,
+          chunkCount: cloudChunks.length,
+          byteLength: serializedBytes.byteLength,
+          sha256: serializedDigest
+        });
+      } else {
+        await transactionStorage.put(recordKey, { payload: serializedBody, revision: nextRevision });
+      }
+      // Revisions are immutable during the transaction. Remove the previous
+      // generation only after the new manifest/single-record value is staged.
+      if (isChunkedCloudRecord(current)) {
+        for (let index = 0; index < current.chunkCount; index += 1) {
+          await transactionStorage.delete(cloudRecordChunkKey(recordKey, current.revision, index));
+        }
+      }
       if (idempotencyKey && idempotencyFingerprint) {
         // Keep a small rolling window of receipts. The seven-day TTL bounds
         // stale keys; the count cap bounds Durable Object storage growth.
