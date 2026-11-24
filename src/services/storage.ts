@@ -138,6 +138,40 @@ function parseJsonRecord(raw: string | null): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Select the two newest complete portfolio snapshots across local and indexed
+ * recovery sources. The canonical localStorage row can lag another tab's
+ * committed IndexedDB mirror, so source precedence alone is not sufficient.
+ */
+function selectNewestPortfolioStateSnapshots(
+  candidates: Array<Record<string, unknown> | null>
+): { current: Record<string, unknown> | null; recovery: Record<string, unknown> | null } {
+  const unique: Array<{ snapshot: Record<string, unknown>; updatedAt: number; order: number }> = [];
+  const fingerprints = new Set<string>();
+  candidates.forEach((snapshot, order) => {
+    if (!snapshot) return;
+    let fingerprint: string;
+    try {
+      fingerprint = JSON.stringify(snapshot);
+    } catch {
+      return;
+    }
+    if (fingerprints.has(fingerprint)) return;
+    fingerprints.add(fingerprint);
+    const updatedAt = Number(snapshot.lastUpdated);
+    unique.push({
+      snapshot,
+      updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0,
+      order
+    });
+  });
+  unique.sort((left, right) => right.updatedAt - left.updatedAt || left.order - right.order);
+  return {
+    current: unique[0]?.snapshot ?? null,
+    recovery: unique[1]?.snapshot ?? unique[0]?.snapshot ?? null
+  };
+}
+
 function normalizeHistorySnapshot(value: unknown): ClosedHistorySnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
@@ -422,18 +456,20 @@ export function initializePortfolioStateRecoveryStorage(
       return;
     }
 
-    const current = localCurrent ?? indexed.current ?? localRecovery ?? indexed.recovery;
+    const selected = selectNewestPortfolioStateSnapshots([
+      localCurrent,
+      indexed.current,
+      localRecovery,
+      indexed.recovery
+    ]);
+    const current = selected.current;
     if (!current) {
       portfolioStateSnapshotCacheByScope.delete(scope);
       return;
     }
 
     const resetRecovery = isExplicitPortfolioReset(current);
-    const recovery = resetRecovery
-      ? current
-      : localRecovery ?? (localCurrent
-        ? indexed.current ?? indexed.recovery ?? current
-        : indexed.recovery ?? indexed.current ?? current);
+    const recovery = resetRecovery ? current : selected.recovery ?? current;
     try {
       const sameSnapshot = (left: Record<string, unknown> | null, right: Record<string, unknown>) => {
         if (!left) return false;
