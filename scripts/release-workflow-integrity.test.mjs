@@ -54,15 +54,35 @@ describe('production deployment security gates', () => {
     expect(script).toContain('within 15 minutes');
   });
 
-  it('places the same-commit security gate before Pages and Worker production writes', () => {
-    const pages = readRepoFile('.github/workflows/ci.yml');
-    const pagesGate = pages.indexOf('Require successful security validation for this exact main commit');
-    const pagesPublish = pages.indexOf('Upload the exact validated Pages artifact');
-    expect(pagesGate).toBeGreaterThan(-1);
-    expect(pagesGate).toBeLessThan(pagesPublish);
-    expect(pages).toContain('bash .github/scripts/require-main-push-security-success.sh');
-    expect(pages).toContain('actions: read');
+  it('stages the exact validated Pages artifact before the separate deployment job', () => {
+    const workflow = readRepoFile('.github/workflows/ci.yml');
+    const stageStart = workflow.indexOf('  pages-stage:');
+    const deployStart = workflow.indexOf('  pages-deploy:');
+    expect(stageStart).toBeGreaterThan(-1);
+    expect(deployStart).toBeGreaterThan(stageStart);
 
+    const stage = workflow.slice(stageStart, deployStart);
+    const checkout = stage.indexOf('name: Check out exact source commit for release gates');
+    const download = stage.indexOf('Download the production build artifact from this exact CI run');
+    const gate = stage.indexOf('Require successful security validation for this exact main commit');
+    const upload = stage.indexOf('Upload the validated Pages artifact for this workflow run');
+    expect(checkout).toBeGreaterThan(-1);
+    expect(checkout).toBeLessThan(download);
+    expect(download).toBeLessThan(gate);
+    expect(gate).toBeLessThan(upload);
+    expect(stage).toContain('ref: ${{ github.sha }}');
+    expect(stage).toContain('bash .github/scripts/require-main-push-security-success.sh');
+    expect(stage).toContain('uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9');
+    expect(stage).toContain('path: dist/');
+    expect(stage).not.toContain('name: github-pages-');
+
+    const deploy = workflow.slice(deployStart);
+    expect(deploy).toContain('needs:\n      - pages-stage');
+    expect(deploy).toContain('uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346');
+    expect(deploy).not.toContain('artifact_name:');
+  });
+
+  it('keeps Worker deployment behind the same-commit security gate', () => {
     const worker = readRepoFile('.github/workflows/deploy-worker.yml');
     const workerGate = worker.indexOf('Require successful security validation for this exact main commit');
     const workerDeploy = worker.indexOf('Deploy Worker with pinned Wrangler');
