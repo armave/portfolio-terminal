@@ -10,6 +10,9 @@ import {
   initializeSavedHistoryStorage,
   flushSavedHistoryPersistence,
   clearSavedHistoryPersistence,
+  initializePortfolioStateRecoveryStorage,
+  flushPortfolioStateRecoveryPersistence,
+  clearPortfolioStateRecoveryPersistence,
   clearLocalData,
   getGatewaySecret,
   setGatewaySecret,
@@ -54,15 +57,38 @@ describe('storage service', () => {
     }
   };
 
+  const isolatedStorageScopes = [
+    'legacy',
+    'offline',
+    'owner',
+    'guest:local-recovery-a',
+    'guest:combined-disclosures-a',
+    'guest:combined-disclosures-b',
+    'guest:history-recovery-test',
+    'guest:history-database-loss',
+    'guest:reset-recovery-check',
+    'guest:history-fallback-check',
+    'guest:guest-a',
+    'guest:guest-b'
+  ];
+
   beforeEach(async () => {
     vi.stubGlobal('localStorage', localStorageMock);
+    for (const scope of isolatedStorageScopes) {
+      await activatePortfolioStorageScope(scope);
+      await clearPortfolioStateRecoveryPersistence(scope);
+      await clearSavedHistoryPersistence();
+    }
     await activatePortfolioStorageScope('legacy');
+    // Reactivating the legacy scope initializes its caches; clear once more
+    // after activation so each test starts with an empty scope, not a warm read.
+    await clearPortfolioStateRecoveryPersistence('legacy');
+    await clearSavedHistoryPersistence();
     storageMap.clear();
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    await clearSavedHistoryPersistence();
   });
 
   afterEach(() => {
@@ -98,7 +124,10 @@ describe('storage service', () => {
       } as unknown as IDBFactory);
 
       const activation = activatePortfolioStorageScope('owner', { migrateLegacy: true });
-      await vi.advanceTimersByTimeAsync(6_000);
+      // Scope activation bounds the owner-state preflight, legacy-history
+      // preflight, portfolio-recovery migration, and closed-history hydration.
+      // Each IndexedDB open has its own two-second deadline.
+      await vi.advanceTimersByTimeAsync(10_000);
       await expect(activation).resolves.toBeUndefined();
 
       expect(storageMap.get('portfolio_session_storage_v1')).toBe('1');
@@ -466,19 +495,199 @@ describe('storage service', () => {
       warnSpy.mockRestore();
     });
 
-    it('repairs a corrupted local snapshot from the last-known-good scoped copy', () => {
-      const previous = JSON.stringify({ activeView: 'AAPL', balance: 125 });
-      storageMap.set('margin_portfolio_state_dynamic_v2', previous);
+    it('keeps the last committed full portfolio snapshot in IndexedDB instead of duplicating it in localStorage', async () => {
+      if (typeof indexedDB === 'undefined') return;
 
-      expect(saveState({ activeView: 'MSFT', balance: 250 })).toBe(true);
-      expect(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(previous);
+      const current = { activeView: 'AAPL', balance: 125 };
+      const previous = { activeView: 'GOOGL', balance: 100 };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(current));
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(previous));
 
-      storageMap.set('margin_portfolio_state_dynamic_v2', '{corrupted');
-      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toEqual({
-        activeView: 'AAPL',
-        balance: 125
+      await initializePortfolioStateRecoveryStorage('legacy');
+
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(JSON.stringify(current));
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+
+      const next = { activeView: 'MSFT', balance: 250 };
+      localStorageMock.setItem.mockImplementation((key: string, value: string) => {
+        if (key === 'margin_portfolio_state_dynamic_v2_recovery_v1') {
+          const error = new Error('Quota exceeded') as Error & { name: string };
+          error.name = 'QuotaExceededError';
+          throw error;
+        }
+        storageMap.set(key, String(value));
       });
-      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(previous);
+
+      expect(saveState(next)).toBe(true);
+      await flushPortfolioStateRecoveryPersistence();
+
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toContain('"activeView":"MSFT"');
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+      expect(localStorageMock.setItem).not.toHaveBeenCalledWith(
+        'margin_portfolio_state_dynamic_v2_recovery_v1',
+        expect.any(String)
+      );
+
+      // A fresh workspace activation restores the active snapshot from the
+      // scoped IndexedDB record even if the local canonical copy is damaged.
+      storageMap.set('margin_portfolio_state_dynamic_v2', '{damaged-after-page-reload');
+      await activatePortfolioStorageScope('legacy');
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toMatchObject(next);
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2') || 'null')).toMatchObject(next);
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open portfolio recovery test database.'));
+      });
+      try {
+        const records = await new Promise<{ current: unknown; recovery: unknown }>((resolve, reject) => {
+          const transaction = db.transaction('history', 'readonly');
+          const store = transaction.objectStore('history');
+          const currentRequest = store.get('portfolio-state-v1');
+          const recoveryRequest = store.get('portfolio-state-v1:last-known-good');
+          let currentRecord: unknown;
+          let recoveryRecord: unknown;
+          currentRequest.onsuccess = () => { currentRecord = currentRequest.result; };
+          recoveryRequest.onsuccess = () => { recoveryRecord = recoveryRequest.result; };
+          transaction.oncomplete = () => resolve({ current: currentRecord, recovery: recoveryRecord });
+          transaction.onerror = () => reject(transaction.error || new Error('Could not read portfolio recovery test records.'));
+          transaction.onabort = () => reject(transaction.error || new Error('Portfolio recovery test read was aborted.'));
+        });
+        expect(records.current).toMatchObject({ activeView: 'MSFT', balance: 250 });
+        expect(records.recovery).toMatchObject({ activeView: 'AAPL', balance: 125 });
+      } finally {
+        db.close();
+      }
+    });
+
+    it('chooses the newest complete same-account snapshot when localStorage lags IndexedDB', async () => {
+      if (typeof indexedDB === 'undefined') return;
+
+      const staleLocal = { activeView: 'AAPL', balance: 100, lastUpdated: 100 };
+      const localRecovery = { activeView: 'MSFT', balance: 150, lastUpdated: 150 };
+      const latestIndexed = { activeView: 'GOOGL', balance: 300, lastUpdated: 300 };
+      const previousIndexed = { activeView: 'TSLA', balance: 200, lastUpdated: 200 };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(staleLocal));
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(localRecovery));
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open stale-snapshot test database.'));
+      });
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('history', 'readwrite');
+        const store = transaction.objectStore('history');
+        store.put(latestIndexed, 'portfolio-state-v1');
+        store.put(previousIndexed, 'portfolio-state-v1:last-known-good');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('Could not seed IndexedDB portfolio snapshots.'));
+        transaction.onabort = () => reject(transaction.error || new Error('IndexedDB portfolio snapshot seed was aborted.'));
+      });
+      db.close();
+
+      await initializePortfolioStateRecoveryStorage('legacy');
+
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toMatchObject({
+        activeView: 'GOOGL',
+        balance: 300,
+        lastUpdated: 300
+      });
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2') || 'null')).toMatchObject(latestIndexed);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+
+      const verifyDb = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not reopen stale-snapshot test database.'));
+      });
+      const recovery = await new Promise<unknown>((resolve, reject) => {
+        const transaction = verifyDb.transaction('history', 'readonly');
+        const request = transaction.objectStore('history').get('portfolio-state-v1:last-known-good');
+        request.onsuccess = () => resolve(request.result);
+        transaction.onerror = () => reject(transaction.error || new Error('Could not verify IndexedDB recovery snapshot.'));
+      });
+      verifyDb.close();
+      expect(recovery).toMatchObject(previousIndexed);
+    });
+
+    it('does not repair a damaged canonical key from an older local recovery row when IndexedDB has a newer snapshot', async () => {
+      if (typeof indexedDB === 'undefined') return;
+      const latest = { activeView: 'GOOGL', balance: 300, lastUpdated: 300 };
+      const previous = { activeView: 'TSLA', balance: 200, lastUpdated: 200 };
+      const staleLocalRecovery = { activeView: 'AAPL', balance: 100, lastUpdated: 100 };
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open stale-local recovery database.'));
+      });
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('history', 'readwrite');
+        const store = transaction.objectStore('history');
+        store.put(latest, 'portfolio-state-v1');
+        store.put(previous, 'portfolio-state-v1:last-known-good');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('Could not seed latest portfolio recovery.'));
+        transaction.onabort = () => reject(transaction.error || new Error('Latest portfolio recovery seed was aborted.'));
+      });
+      db.close();
+
+      await initializePortfolioStateRecoveryStorage('legacy');
+      storageMap.set('margin_portfolio_state_dynamic_v2', '{damaged-active-snapshot');
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(staleLocalRecovery));
+
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toMatchObject(latest);
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2') || 'null')).toMatchObject(latest);
+    });
+
+    it('coalesces same-turn saves while retaining the last committed recovery baseline', async () => {
+      if (typeof indexedDB === 'undefined') return;
+      const baseline = { activeView: 'AAPL', balance: 100, lastUpdated: 100 };
+      const intermediate = { activeView: 'MSFT', balance: 200, lastUpdated: 200 };
+      const latest = { activeView: 'GOOGL', balance: 300, lastUpdated: 300 };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(baseline));
+      await initializePortfolioStateRecoveryStorage('legacy');
+
+      expect(saveState(intermediate)).toBe(true);
+      expect(saveState(latest)).toBe(true);
+      await flushPortfolioStateRecoveryPersistence();
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open coalesced portfolio recovery database.'));
+      });
+      const records = await new Promise<{ current: unknown; recovery: unknown }>((resolve, reject) => {
+        const transaction = db.transaction('history', 'readonly');
+        const store = transaction.objectStore('history');
+        const currentRequest = store.get('portfolio-state-v1');
+        const recoveryRequest = store.get('portfolio-state-v1:last-known-good');
+        let current: unknown;
+        let recovery: unknown;
+        currentRequest.onsuccess = () => { current = currentRequest.result; };
+        recoveryRequest.onsuccess = () => { recovery = recoveryRequest.result; };
+        transaction.oncomplete = () => resolve({ current, recovery });
+        transaction.onerror = () => reject(transaction.error || new Error('Could not verify coalesced portfolio recovery records.'));
+        transaction.onabort = () => reject(transaction.error || new Error('Coalesced portfolio recovery read was aborted.'));
+      });
+      db.close();
+
+      expect(records.current).toMatchObject(latest);
+      expect(records.recovery).toMatchObject(baseline);
+    });
+
+    it('retains the local recovery snapshot when IndexedDB is unavailable', async () => {
+      vi.stubGlobal('indexedDB', undefined);
+      const current = JSON.stringify({ activeView: 'MSFT', balance: 250 });
+      const previous = JSON.stringify({ activeView: 'AAPL', balance: 125 });
+      storageMap.set('margin_portfolio_state_dynamic_v2', current);
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', previous);
+
+      await initializePortfolioStateRecoveryStorage('legacy');
+
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(current);
+      expect(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(previous);
     });
 
     it('never reads another account scope recovery snapshot', async () => {
@@ -950,7 +1159,7 @@ describe('storage service', () => {
       expect(loadSavedHistory()).toEqual(expected);
     });
 
-    it('uses blank local recovery baselines after a committed portfolio reset', async () => {
+    it('uses blank IndexedDB recovery baselines after a committed portfolio reset', async () => {
       if (typeof indexedDB === 'undefined') return;
       const previousHistory = {
         brokerExecutedTrades: [{ id: 'before-reset-trade' }],
@@ -977,7 +1186,21 @@ describe('storage service', () => {
         { deviceActiveView: 'COMBINED' }
       )).toBe(true);
 
-      const recoverySnapshot = JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1') || 'null');
+      await flushPortfolioStateRecoveryPersistence();
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+      const recoveryDb = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open reset portfolio recovery database'));
+      });
+      const recoverySnapshot = await new Promise<unknown>((resolve, reject) => {
+        const transaction = recoveryDb.transaction('history', 'readonly');
+        const request = transaction.objectStore('history').get('portfolio-state-v1:last-known-good');
+        request.onsuccess = () => resolve(request.result);
+        transaction.onerror = () => reject(transaction.error || new Error('Could not read reset portfolio recovery'));
+        transaction.onabort = () => reject(transaction.error || new Error('Reset portfolio recovery read was aborted'));
+      });
+      recoveryDb.close();
       expect(recoverySnapshot).toMatchObject({
         activeView: 'COMBINED',
         balance: 0,
@@ -1083,6 +1306,109 @@ describe('storage service', () => {
       .toEqual(legacyHistory);
   });
 
+  it('migrates retained legacy snapshots into owner IndexedDB before reclaiming localStorage quota', async () => {
+    if (typeof indexedDB === 'undefined') return;
+    await clearPortfolioStateRecoveryPersistence('owner');
+
+    const legacyCurrent = {
+      activeView: 'GOOGL',
+      balance: 350,
+      positions: { GOOGL: { shares: 5 } },
+      lastUpdated: 300
+    };
+    const legacyRecovery = {
+      activeView: 'AAPL',
+      balance: 200,
+      positions: { AAPL: { shares: 2 } },
+      lastUpdated: 200
+    };
+    const olderLegacy = { activeView: 'MSFT', balance: 100, lastUpdated: 100 };
+    storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(legacyCurrent));
+    storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(legacyRecovery));
+    storageMap.set('portfolio_state', JSON.stringify(olderLegacy));
+
+    await activatePortfolioStorageScope('owner', { migrateLegacy: true });
+
+    expect(loadSavedState({})).toMatchObject(legacyCurrent);
+    expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+    expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+    expect(storageMap.has('portfolio_state')).toBe(false);
+    expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2::owner') || 'null'))
+      .toMatchObject(legacyCurrent);
+
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('portfolio-terminal-history-cache::owner', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open owner portfolio recovery database.'));
+    });
+    const records = await new Promise<{ current: unknown; recovery: unknown }>((resolve, reject) => {
+      const transaction = db.transaction('history', 'readonly');
+      const store = transaction.objectStore('history');
+      const currentRequest = store.get('portfolio-state-v1');
+      const recoveryRequest = store.get('portfolio-state-v1:last-known-good');
+      let current: unknown;
+      let recovery: unknown;
+      currentRequest.onsuccess = () => { current = currentRequest.result; };
+      recoveryRequest.onsuccess = () => { recovery = recoveryRequest.result; };
+      transaction.oncomplete = () => resolve({ current, recovery });
+      transaction.onerror = () => reject(transaction.error || new Error('Could not verify owner portfolio recovery records.'));
+      transaction.onabort = () => reject(transaction.error || new Error('Owner portfolio recovery read was aborted.'));
+    });
+    db.close();
+    expect(records.current).toMatchObject(legacyCurrent);
+    expect(records.recovery).toMatchObject(legacyRecovery);
+  });
+
+  it('keeps an existing owner IndexedDB portfolio when stale legacy data is malformed', async () => {
+    if (typeof indexedDB === 'undefined') return;
+    await clearPortfolioStateRecoveryPersistence('owner');
+    const ownerCurrent = { activeView: 'GOOGL', balance: 350, lastUpdated: 300 };
+    const ownerRecovery = { activeView: 'AAPL', balance: 200, lastUpdated: 200 };
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('portfolio-terminal-history-cache::owner', 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('history')) {
+          request.result.createObjectStore('history');
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open existing owner recovery database.'));
+    });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('history', 'readwrite');
+      const store = transaction.objectStore('history');
+      store.put(ownerCurrent, 'portfolio-state-v1');
+      store.put(ownerRecovery, 'portfolio-state-v1:last-known-good');
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error('Could not seed owner recovery records.'));
+      transaction.onabort = () => reject(transaction.error || new Error('Owner recovery seed was aborted.'));
+    });
+    db.close();
+
+    storageMap.set('margin_portfolio_state_dynamic_v2', '{malformed-legacy-state');
+    storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', '{malformed-legacy-recovery');
+    storageMap.set('portfolio_state', '{malformed-legacy-fallback');
+
+    await expect(activatePortfolioStorageScope('owner', { migrateLegacy: true })).resolves.toBeUndefined();
+
+    expect(loadSavedState({})).toMatchObject(ownerCurrent);
+    expect(storageMap.get('margin_portfolio_state_dynamic_v2::owner')).toMatch(JSON.stringify(ownerCurrent));
+  });
+
+  it('preserves legacy portfolio sources when owner IndexedDB migration is unavailable', async () => {
+    vi.stubGlobal('indexedDB', undefined);
+    const current = { activeView: 'GOOGL', balance: 350, lastUpdated: 300 };
+    const recovery = { activeView: 'AAPL', balance: 200, lastUpdated: 200 };
+    storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(current));
+    storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(recovery));
+
+    await activatePortfolioStorageScope('owner', { migrateLegacy: true });
+
+    expect(loadSavedState({})).toMatchObject(current);
+    expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(JSON.stringify(current));
+    expect(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(JSON.stringify(recovery));
+    expect(storageMap.has('margin_portfolio_state_dynamic_v2::owner')).toBe(false);
+  });
   it('isolates owner, guest, and offline snapshots plus broker history and rules', async () => {
     const legacyState = {
       balance: -275,
@@ -1165,11 +1491,11 @@ describe('storage service', () => {
   });
 
   describe('clearLocalData', () => {
-    it('clears state items from storage', () => {
+    it('clears state items and IndexedDB recovery records', async () => {
       storageMap.set('portfolio_state', 'data1');
       storageMap.set('margin_portfolio_state_dynamic_v2', 'data2');
 
-      clearLocalData();
+      await clearLocalData();
 
       expect(storageMap.has('portfolio_state')).toBe(false);
       expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);

@@ -15,6 +15,8 @@ const HISTORY_DATABASE_VERSION = 1;
 const HISTORY_OBJECT_STORE = 'history';
 const HISTORY_RECORD_KEY = 'closed-history-v1';
 const HISTORY_RECORD_RECOVERY_KEY = 'closed-history-v1:last-known-good';
+const PORTFOLIO_STATE_RECORD_KEY = 'portfolio-state-v1';
+const PORTFOLIO_STATE_RECOVERY_RECORD_KEY = 'portfolio-state-v1:last-known-good';
 const MAX_LOCAL_HISTORY_FALLBACK_CHARS = 512 * 1024;
 // Keep startup reads/opens short, but allow large account history snapshots more
 // time to be structured-cloned and committed by slower browser IndexedDB engines.
@@ -29,6 +31,17 @@ let queuedHistorySnapshot: ClosedHistorySnapshot | null = null;
 let historyWriteQueue: Promise<boolean> = Promise.resolve(true);
 let historyStorageInitialized = false;
 let historyStorageInitialization: Promise<void> | null = null;
+interface PendingPortfolioStateRecoveryWrite {
+  current: Record<string, unknown>;
+  recovery: Record<string, unknown> | null;
+  resetRecovery: boolean;
+}
+
+const portfolioStateSnapshotCacheByScope = new Map<string, Record<string, unknown>>();
+const portfolioStateRecoveryWriteQueuesByScope = new Map<string, Promise<boolean>>();
+const portfolioStateRecoveryPendingWritesByScope = new Map<string, PendingPortfolioStateRecoveryWrite>();
+const portfolioStateRecoveryScheduledWritesByScope = new Map<string, Promise<boolean>>();
+const portfolioStateRecoveryInitializationsByScope = new Map<string, Promise<void>>();
 
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
 const STORAGE_KEY_RULES = 'tradernet_rules_v1';
@@ -133,6 +146,40 @@ function parseJsonRecord(raw: string | null): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Select the two newest complete portfolio snapshots across local and indexed
+ * recovery sources. The canonical localStorage row can lag another tab's
+ * committed IndexedDB mirror, so source precedence alone is not sufficient.
+ */
+function selectNewestPortfolioStateSnapshots(
+  candidates: Array<Record<string, unknown> | null>
+): { current: Record<string, unknown> | null; recovery: Record<string, unknown> | null } {
+  const unique: Array<{ snapshot: Record<string, unknown>; updatedAt: number; order: number }> = [];
+  const fingerprints = new Set<string>();
+  candidates.forEach((snapshot, order) => {
+    if (!snapshot) return;
+    let fingerprint: string;
+    try {
+      fingerprint = JSON.stringify(snapshot);
+    } catch {
+      return;
+    }
+    if (fingerprints.has(fingerprint)) return;
+    fingerprints.add(fingerprint);
+    const updatedAt = Number(snapshot.lastUpdated);
+    unique.push({
+      snapshot,
+      updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0,
+      order
+    });
+  });
+  unique.sort((left, right) => right.updatedAt - left.updatedAt || left.order - right.order);
+  return {
+    current: unique[0]?.snapshot ?? null,
+    recovery: unique[1]?.snapshot ?? unique[0]?.snapshot ?? null
+  };
+}
+
 function normalizeHistorySnapshot(value: unknown): ClosedHistorySnapshot | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Record<string, unknown>;
@@ -228,6 +275,373 @@ function openHistoryDatabase(
     request.onblocked = () => rejectRequest(new Error('Closed-history storage upgrade is blocked by another tab'));
   });
 }
+
+async function readPortfolioStateRecoveryRecordsFromIndexedDB(
+  scope = activePortfolioStorageScope
+): Promise<{ current: Record<string, unknown> | null; recovery: Record<string, unknown> | null }> {
+  const db = await openHistoryDatabase(scope);
+  try {
+    return await new Promise<{ current: Record<string, unknown> | null; recovery: Record<string, unknown> | null }>((resolve, reject) => {
+      const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readonly');
+      const store = transaction.objectStore(HISTORY_OBJECT_STORE);
+      const currentRequest = store.get(PORTFOLIO_STATE_RECORD_KEY);
+      const recoveryRequest = store.get(PORTFOLIO_STATE_RECOVERY_RECORD_KEY);
+      let current: Record<string, unknown> | null = null;
+      let recovery: Record<string, unknown> | null = null;
+      let failure: Error | null = null;
+      const timeout = setTimeout(() => {
+        try { transaction.abort(); } catch { /* Transaction may already be inactive. */ }
+        reject(historyStorageTimeout('Reading portfolio snapshot recovery from IndexedDB timed out.'));
+      }, INDEXED_DB_OPERATION_TIMEOUT_MS);
+      const finish = (error?: Error) => {
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve({ current, recovery });
+      };
+      currentRequest.onsuccess = () => {
+        const value = currentRequest.result;
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          current = value as Record<string, unknown>;
+        }
+      };
+      recoveryRequest.onsuccess = () => {
+        const value = recoveryRequest.result;
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          recovery = value as Record<string, unknown>;
+        }
+      };
+      currentRequest.onerror = () => {
+        failure = currentRequest.error || new Error('Could not read the IndexedDB portfolio snapshot.');
+      };
+      recoveryRequest.onerror = () => {
+        failure = recoveryRequest.error || new Error('Could not read the IndexedDB portfolio recovery snapshot.');
+      };
+      transaction.oncomplete = () => finish(failure || undefined);
+      transaction.onerror = () => {
+        failure = transaction.error || failure || new Error('Portfolio snapshot read transaction failed.');
+      };
+      transaction.onabort = () => finish(failure || transaction.error || new Error('Portfolio snapshot read transaction was aborted.'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function writePortfolioStateRecoveryRecordsToIndexedDB(
+  current: Record<string, unknown>,
+  recovery: Record<string, unknown> | null,
+  scope = activePortfolioStorageScope,
+  resetRecovery = false
+): Promise<void> {
+  const db = await openHistoryDatabase(scope, INDEXED_DB_HISTORY_WRITE_TIMEOUT_MS);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
+      const store = transaction.objectStore(HISTORY_OBJECT_STORE);
+      const currentRequest = store.get(PORTFOLIO_STATE_RECORD_KEY);
+      let failure: Error | null = null;
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(historyStorageTimeout('Writing portfolio snapshot recovery to IndexedDB timed out.'));
+        try { transaction.abort(); } catch { /* Transaction may already be inactive. */ }
+      }, INDEXED_DB_HISTORY_WRITE_TIMEOUT_MS);
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve();
+      };
+
+      currentRequest.onsuccess = () => {
+        const value = currentRequest.result;
+        const existingCurrent = value && typeof value === 'object' && !Array.isArray(value)
+          ? value as Record<string, unknown>
+          : null;
+        // Reset is a deliberate financial boundary: the new reset generation
+        // becomes both current and recovery so old positions cannot reappear.
+        const nextRecovery = resetRecovery ? current : recovery ?? existingCurrent ?? current;
+        store.put(current, PORTFOLIO_STATE_RECORD_KEY);
+        store.put(nextRecovery, PORTFOLIO_STATE_RECOVERY_RECORD_KEY);
+      };
+      currentRequest.onerror = () => {
+        failure = currentRequest.error || new Error('Could not inspect the current IndexedDB portfolio snapshot.');
+        try { transaction.abort(); } catch { finish(failure); }
+      };
+      transaction.oncomplete = () => finish(failure || undefined);
+      transaction.onerror = () => finish(transaction.error || failure || new Error('Portfolio snapshot recovery write failed.'));
+      transaction.onabort = () => finish(failure || transaction.error || new Error('Portfolio snapshot recovery write was aborted.'));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function schedulePortfolioStateRecoveryWrite(scope: string): void {
+  if (portfolioStateRecoveryScheduledWritesByScope.has(scope)) return;
+
+  const scheduled = Promise.resolve().then(async () => {
+    portfolioStateRecoveryScheduledWritesByScope.delete(scope);
+    const pending = portfolioStateRecoveryPendingWritesByScope.get(scope);
+    if (!pending) return true;
+    portfolioStateRecoveryPendingWritesByScope.delete(scope);
+
+    const previousQueue = portfolioStateRecoveryWriteQueuesByScope.get(scope) ?? Promise.resolve(true);
+    const nextWrite = previousQueue.catch(() => false).then(async () => {
+      try {
+        await writePortfolioStateRecoveryRecordsToIndexedDB(
+          pending.current,
+          pending.recovery,
+          scope,
+          pending.resetRecovery
+        );
+        try {
+          getBrowserStorage()?.removeItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope));
+        } catch (error) {
+          logSafeDiagnostic('warn', 'browser-storage', error);
+        }
+        return true;
+      } catch (error) {
+        // Keep a local fallback only when the IndexedDB mirror cannot commit.
+        // It is best-effort and never blocks the active local snapshot write.
+        try {
+          if (pending.recovery) {
+            getBrowserStorage()?.setItem(
+              scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope),
+              JSON.stringify(pending.recovery)
+            );
+          }
+        } catch {
+          // The previous IndexedDB recovery record remains available when the
+          // failure was a transient quota/open issue.
+        }
+        logSafeDiagnostic('warn', 'browser-storage', error);
+        return false;
+      }
+    });
+    portfolioStateRecoveryWriteQueuesByScope.set(scope, nextWrite);
+    const succeeded = await nextWrite;
+    if (portfolioStateRecoveryWriteQueuesByScope.get(scope) === nextWrite) {
+      portfolioStateRecoveryWriteQueuesByScope.delete(scope);
+    }
+    return succeeded;
+  });
+
+  portfolioStateRecoveryScheduledWritesByScope.set(scope, scheduled);
+}
+
+/**
+ * Drain all recovery work already queued for a storage scope. A loop is needed
+ * because a new save can arrive while an earlier IndexedDB transaction is
+ * committing.
+ */
+async function flushPortfolioStateRecoveryScope(scope: string): Promise<boolean> {
+  let succeeded = true;
+  while (true) {
+    const scheduled = portfolioStateRecoveryScheduledWritesByScope.get(scope);
+    if (scheduled) {
+      succeeded = (await scheduled) && succeeded;
+      continue;
+    }
+
+    const inFlight = portfolioStateRecoveryWriteQueuesByScope.get(scope);
+    if (inFlight) {
+      succeeded = (await inFlight) && succeeded;
+      if (portfolioStateRecoveryWriteQueuesByScope.get(scope) === inFlight) {
+        portfolioStateRecoveryWriteQueuesByScope.delete(scope);
+      }
+      continue;
+    }
+
+    if (portfolioStateRecoveryPendingWritesByScope.has(scope)) {
+      schedulePortfolioStateRecoveryWrite(scope);
+      continue;
+    }
+    return succeeded;
+  }
+}
+
+function queuePortfolioStateRecoveryWrite(
+  current: Record<string, unknown>,
+  previous: Record<string, unknown> | null,
+  scope: string,
+  resetRecovery = false
+): void {
+  const pending = portfolioStateRecoveryPendingWritesByScope.get(scope);
+  if (pending) {
+    // Same-turn saves are coalesced to the latest active snapshot while keeping
+    // the last snapshot that was durable before this batch began. A reset
+    // replaces that baseline; a mutation after a queued reset retains it.
+    portfolioStateRecoveryPendingWritesByScope.set(scope, {
+      current,
+      recovery: resetRecovery ? current : pending.recovery ?? previous,
+      resetRecovery
+    });
+  } else {
+    portfolioStateRecoveryPendingWritesByScope.set(scope, {
+      current,
+      recovery: resetRecovery ? current : previous,
+      resetRecovery
+    });
+  }
+  schedulePortfolioStateRecoveryWrite(scope);
+}
+
+/**
+ * Migrate the full last-known-good portfolio JSON out of localStorage only
+ * after the account-scoped IndexedDB transaction has committed both records.
+ */
+export function initializePortfolioStateRecoveryStorage(
+  scope = activePortfolioStorageScope,
+  options: { migrateLegacy?: boolean } = {}
+): Promise<void> {
+  if (scope !== activePortfolioStorageScope) {
+    return Promise.reject(new Error('Cannot initialize portfolio recovery for an inactive storage scope.'));
+  }
+  const existing = portfolioStateRecoveryInitializationsByScope.get(scope);
+  if (existing) return existing;
+
+  const initialization = (async () => {
+    const storage = getBrowserStorage();
+    const canonicalKey = scopedStorageKey(STORAGE_KEY_STATE, scope);
+    const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope);
+    let localCurrent: Record<string, unknown> | null = null;
+    let localRecovery: Record<string, unknown> | null = null;
+    let legacyCurrent: Record<string, unknown> | null = null;
+    let legacyRecovery: Record<string, unknown> | null = null;
+    let legacyFallback: Record<string, unknown> | null = null;
+    const migrateLegacy = options.migrateLegacy === true && scope === 'owner';
+    if (storage) {
+      try {
+        localCurrent = parseJsonRecord(storage.getItem(canonicalKey));
+        localRecovery = parseJsonRecord(storage.getItem(recoveryKey));
+        if (migrateLegacy) {
+          legacyCurrent = parseJsonRecord(storage.getItem(STORAGE_KEY_STATE));
+          legacyRecovery = parseJsonRecord(storage.getItem(STORAGE_KEY_STATE_RECOVERY));
+          legacyFallback = parseJsonRecord(storage.getItem(STORAGE_KEY_LEGACY_STATE));
+        }
+      } catch (error) {
+        logSafeDiagnostic('warn', 'browser-storage', error);
+      }
+    }
+
+    let indexed: { current: Record<string, unknown> | null; recovery: Record<string, unknown> | null };
+    try {
+      indexed = await readPortfolioStateRecoveryRecordsFromIndexedDB(scope);
+    } catch (error) {
+      // IndexedDB may be blocked or unavailable. Preserve the local recovery
+      // copy and keep it readable; do not claim storage has been reclaimed.
+      const fallback = selectNewestPortfolioStateSnapshots([
+        localCurrent, localRecovery, legacyCurrent, legacyRecovery, legacyFallback
+      ]).current;
+      if (fallback) portfolioStateSnapshotCacheByScope.set(scope, fallback);
+      // Keep all original local/legacy rows when IndexedDB is unavailable.
+      // Do not create a second full-size localStorage copy in a quota-limited profile.
+      logSafeDiagnostic('warn', 'browser-storage', error);
+      return;
+    }
+
+    const selected = selectNewestPortfolioStateSnapshots([
+      localCurrent,
+      indexed.current,
+      localRecovery,
+      indexed.recovery,
+      legacyCurrent,
+      legacyRecovery,
+      legacyFallback
+    ]);
+    const current = selected.current;
+    if (!current) {
+      portfolioStateSnapshotCacheByScope.delete(scope);
+      return;
+    }
+
+    const resetRecovery = isExplicitPortfolioReset(current);
+    const recovery = resetRecovery ? current : selected.recovery ?? current;
+    try {
+      const sameSnapshot = (left: Record<string, unknown> | null, right: Record<string, unknown>) => {
+        if (!left) return false;
+        try {
+          return JSON.stringify(left) === JSON.stringify(right);
+        } catch {
+          return false;
+        }
+      };
+      if (!sameSnapshot(indexed.current, current) || !sameSnapshot(indexed.recovery, recovery)) {
+        await writePortfolioStateRecoveryRecordsToIndexedDB(current, recovery, scope, resetRecovery);
+      }
+    } catch (error) {
+      // Keep every existing local and legacy source until both IndexedDB rows commit.
+      portfolioStateSnapshotCacheByScope.set(scope, current);
+      logSafeDiagnostic('warn', 'browser-storage', error);
+      return;
+    }
+
+    portfolioStateSnapshotCacheByScope.set(scope, current);
+    if (storage) {
+      // IndexedDB now holds the selected current and last-known-good records.
+      // Remove pre-scope duplicates before repairing the scoped active key to
+      // reclaim quota without risking the last recoverable portfolio copy.
+      try {
+        storage.removeItem(recoveryKey);
+        if (migrateLegacy) {
+          storage.removeItem(STORAGE_KEY_STATE);
+          storage.removeItem(STORAGE_KEY_STATE_RECOVERY);
+          storage.removeItem(STORAGE_KEY_LEGACY_STATE);
+        }
+      } catch (error) {
+        logSafeDiagnostic('warn', 'browser-storage', error);
+      }
+      try {
+        const rawCurrent = parseJsonRecord(storage.getItem(canonicalKey));
+        const newest = selectNewestPortfolioStateSnapshots([rawCurrent, current]).current;
+        if (newest && newest !== rawCurrent) storage.setItem(canonicalKey, JSON.stringify(newest));
+      } catch (error) {
+        // The validated IndexedDB snapshot and in-memory cache remain available
+        // if one active localStorage snapshot still cannot be written.
+        logSafeDiagnostic('warn', 'browser-storage', error);
+      }
+    }
+  })().finally(() => {
+    portfolioStateRecoveryInitializationsByScope.delete(scope);
+  });
+
+  portfolioStateRecoveryInitializationsByScope.set(scope, initialization);
+  return initialization;
+}
+
+/** Wait until queued state recovery mirrors have settled for the active scope. */
+export async function flushPortfolioStateRecoveryPersistence(): Promise<boolean> {
+  return await flushPortfolioStateRecoveryScope(activePortfolioStorageScope);
+}
+
+/** Clear only the portfolio recovery rows; the separate closed-history rows remain intact. */
+export async function clearPortfolioStateRecoveryPersistence(scope = activePortfolioStorageScope): Promise<void> {
+  portfolioStateSnapshotCacheByScope.delete(scope);
+  await flushPortfolioStateRecoveryScope(scope);
+  try {
+    const db = await openHistoryDatabase(scope);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readwrite');
+        const store = transaction.objectStore(HISTORY_OBJECT_STORE);
+        store.delete(PORTFOLIO_STATE_RECORD_KEY);
+        store.delete(PORTFOLIO_STATE_RECOVERY_RECORD_KEY);
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('Could not clear portfolio snapshot recovery.'));
+        transaction.onabort = () => reject(transaction.error || new Error('Portfolio snapshot recovery clear was aborted.'));
+      });
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    logSafeDiagnostic('warn', 'browser-storage', error);
+  }
+  portfolioStateSnapshotCacheByScope.delete(scope);
+}
+
 
 async function readHistoryRecordFromIndexedDB(scope = activePortfolioStorageScope): Promise<ClosedHistorySnapshot | null> {
   const db = await openHistoryDatabase(scope);
@@ -513,9 +927,9 @@ export function initializeSavedHistoryStorage(
  * Switch the active browser portfolio namespace. All administrators share the
  * owner workspace; each guest has a distinct local workspace.
  *
- * Legacy local data is copied only into the owner namespace. Its source remains
- * available for recovery and is never used as a guest/offline fallback after
- * scoped authenticated storage has been activated.
+ * Legacy administrator snapshots are migrated directly into the owner-scoped
+ * IndexedDB current/recovery records. Their localStorage sources are removed
+ * only after commit and are never read by guest/offline workspaces.
  */
 async function activatePortfolioStorageScopeNow(
   scope: string,
@@ -531,8 +945,11 @@ async function activatePortfolioStorageScopeNow(
   if (historyStorageInitialization) await historyStorageInitialization;
   await (historyWriteQueuesByScope.get(previousScope) ?? historyWriteQueue).catch(() => false);
   await (historyWriteQueuesByScope.get(nextScope) ?? Promise.resolve(true)).catch(() => false);
+  await flushPortfolioStateRecoveryScope(previousScope);
+  await flushPortfolioStateRecoveryScope(nextScope);
 
   if (previousScope === nextScope) {
+    await initializePortfolioStateRecoveryStorage(nextScope, options);
     await initializeSavedHistoryStorage(nextScope);
     return;
   }
@@ -551,6 +968,7 @@ async function activatePortfolioStorageScopeNow(
     }
     activePortfolioStorageScope = nextScope;
     resetHistoryStorageCache();
+    await initializePortfolioStateRecoveryStorage(nextScope, options);
     await initializeSavedHistoryStorage(nextScope);
     return;
   }
@@ -568,6 +986,7 @@ async function activatePortfolioStorageScopeNow(
     }
     activePortfolioStorageScope = nextScope;
     resetHistoryStorageCache();
+    await initializePortfolioStateRecoveryStorage(nextScope, options);
     await initializeSavedHistoryStorage(nextScope);
     return;
   }
@@ -575,20 +994,35 @@ async function activatePortfolioStorageScopeNow(
   if (!storage) throw new Error('Browser storage is unavailable; the account workspace was not switched.');
 
   if (options.migrateLegacy && nextScope === 'owner') {
-    const targetStateKey = scopedStorageKey(STORAGE_KEY_STATE, nextScope);
-    const targetRecoveryStateKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, nextScope);
+    // Do not copy another multi-megabyte state into localStorage here. The
+    // account-scoped recovery initializer imports legacy/current/recovery
+    // candidates directly into IndexedDB after the active scope is switched.
+    let indexedTargetState: { current: Record<string, unknown> | null; recovery: Record<string, unknown> | null } | null = null;
+    let indexedTargetStateReadFailed = false;
+    try {
+      indexedTargetState = await readPortfolioStateRecoveryRecordsFromIndexedDB(nextScope);
+    } catch {
+      // A blocked/unavailable database must not turn a legacy validation check
+      // into an account sign-in failure. The initializer below retains sources.
+      indexedTargetStateReadFailed = true;
+    }
     const targetStateIsValid = Boolean(
-      parseJsonRecord(storage.getItem(targetStateKey)) ||
-      parseJsonRecord(storage.getItem(targetRecoveryStateKey))
+      parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_STATE, nextScope))) ||
+      parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, nextScope))) ||
+      indexedTargetState?.current ||
+      indexedTargetState?.recovery
     );
-    if (!targetStateIsValid) {
-      const legacyState = storage.getItem(STORAGE_KEY_STATE) ?? storage.getItem(STORAGE_KEY_LEGACY_STATE);
-      if (legacyState) {
-        if (!parseJsonRecord(legacyState)) {
-          throw new Error('The legacy administrator snapshot is not a valid object; its source was left untouched.');
-        }
-        storage.setItem(targetStateKey, legacyState);
-      }
+    const legacyCurrent = storage.getItem(STORAGE_KEY_STATE);
+    const legacyRecovery = storage.getItem(STORAGE_KEY_STATE_RECOVERY);
+    const legacyFallback = storage.getItem(STORAGE_KEY_LEGACY_STATE);
+    const hasLegacyPayload = legacyCurrent !== null || legacyRecovery !== null || legacyFallback !== null;
+    const hasValidLegacySnapshot = Boolean(
+      parseJsonRecord(legacyCurrent) ||
+      parseJsonRecord(legacyRecovery) ||
+      parseJsonRecord(legacyFallback)
+    );
+    if (!targetStateIsValid && !indexedTargetStateReadFailed && hasLegacyPayload && !hasValidLegacySnapshot) {
+      throw new Error('The legacy administrator snapshot is not a valid object; its source was left untouched.');
     }
 
     const targetRulesKey = scopedStorageKey(STORAGE_KEY_RULES, nextScope);
@@ -636,6 +1070,7 @@ async function activatePortfolioStorageScopeNow(
 
   activePortfolioStorageScope = nextScope;
   resetHistoryStorageCache();
+  await initializePortfolioStateRecoveryStorage(nextScope, options);
   await initializeSavedHistoryStorage(nextScope);
 }
 
@@ -788,11 +1223,6 @@ export function markFreedomCashflowTradeCheckpoint(accountId: string, checkpoint
   }
 }
 
-/** Removes related legacy keys together so credential cleanup follows one path. */
-function removeStoredKeys(storage: Storage, keys: string[]): void {
-  keys.forEach((key) => storage.removeItem(key));
-}
-
 export {
   obfuscateSecret,
   deobfuscateSecret,
@@ -847,10 +1277,8 @@ function persistPortfolioSnapshot(
   }
 
   const resetRecovery = isExplicitPortfolioReset(state);
-  const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope);
   const writes: Array<{ key: string; value: string }> = [
-    { key: stateKey, value: persistedStateJson },
-    ...(resetRecovery ? [{ key: recoveryKey, value: persistedStateJson }] : [])
+    { key: stateKey, value: persistedStateJson }
   ];
   if (typeof options.deviceActiveView === 'string') {
     writes.push({ key: 'portfolio_active_view', value: options.deviceActiveView });
@@ -899,13 +1327,10 @@ function persistPortfolioSnapshot(
   }
   const stateChanged = previousComparable !== nextComparable;
 
-  if (!resetRecovery && stateChanged && previousRaw && parseJsonRecord(previousRaw)) {
-    try {
-      storage.setItem(recoveryKey, previousRaw);
-    } catch {
-      // Recovery copies are best-effort; a full quota must not block the primary save.
-    }
-  }
+  const previousStateSnapshot = parseJsonRecord(previousRaw ?? null) ??
+    portfolioStateSnapshotCacheByScope.get(scope) ?? null;
+  const nextStateSnapshot = parseJsonRecord(persistedStateJson);
+  if (!nextStateSnapshot) return { success: false, stateChanged: false, savedAt: null };
 
   const attemptedKeys: string[] = [];
   try {
@@ -928,6 +1353,15 @@ function persistPortfolioSnapshot(
   }
 
   state.lastUpdated = savedAt;
+  portfolioStateSnapshotCacheByScope.set(scope, nextStateSnapshot);
+  if (stateChanged || resetRecovery) {
+    queuePortfolioStateRecoveryWrite(
+      nextStateSnapshot,
+      resetRecovery ? nextStateSnapshot : previousStateSnapshot,
+      scope,
+      resetRecovery
+    );
+  }
   return { success: true, stateChanged, savedAt };
 }
 
@@ -1027,15 +1461,17 @@ export function saveState<TState extends object>(
 export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
   try {
     const storage = getBrowserStorage();
-    if (!storage) return fallback;
+    if (!storage) {
+      const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
+      return cached ? { ...fallback, ...cached } : fallback;
+    }
 
     const canonicalKey = scopedStorageKey(STORAGE_KEY_STATE);
     // Recovery stays within the active account namespace. Guest/offline scopes
     // can never inspect the owner's legacy or recovery records.
     const candidates = [
       canonicalKey,
-      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY),
-      scopedStorageKey(STORAGE_KEY_LEGACY_STATE)
+      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY)
     ];
     for (const key of candidates) {
       let raw: string | null;
@@ -1043,7 +1479,8 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
         raw = storage.getItem(key);
       } catch (err) {
         logSafeDiagnostic('warn', 'browser-storage', err);
-        return fallback;
+        const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
+        return cached ? { ...fallback, ...cached } : fallback;
       }
       if (!raw || !raw.trim()) continue;
 
@@ -1059,29 +1496,22 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
         continue;
       }
 
-      if (key !== canonicalKey) {
+      const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
+      const newest = selectNewestPortfolioStateSnapshots([parsed, cached ?? null]).current ?? parsed;
+      if (key !== canonicalKey || newest !== parsed) {
         try {
-          // Complete a recoverable interrupted/malformed local snapshot on the
-          // next read. Keep the recovery row in place until a later good save.
-          storage.setItem(canonicalKey, raw);
-          console.warn('Recovered the local portfolio snapshot from a scoped recovery copy.');
+          // Repair only after comparing the local candidate with the latest
+          // same-scope snapshot cached from IndexedDB. A stale local recovery
+          // row must never replace a newer account snapshot.
+          storage.setItem(canonicalKey, JSON.stringify(newest));
+          if (key !== canonicalKey) {
+            console.warn('Recovered the local portfolio snapshot from the newest scoped recovery record.');
+          }
         } catch (error) {
           logSafeDiagnostic('warn', 'browser-storage', error);
         }
       }
-
-      if (key === canonicalKey) {
-        try {
-          const recoveryKey = scopedStorageKey(STORAGE_KEY_STATE_RECOVERY);
-          if (!parseJsonRecord(storage.getItem(recoveryKey))) {
-            storage.setItem(recoveryKey, raw);
-          }
-        } catch {
-          // Seeding a recovery copy is best-effort and must not block startup.
-        }
-      }
-
-      const persistedState = { ...parsed };
+      const persistedState = { ...newest };
       // Credentials and independently persisted history are not part of the startup snapshot.
       delete persistedState.gatewaySecret;
       delete persistedState.brokerExecutedTrades;
@@ -1089,10 +1519,15 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
       return { ...fallback, ...persistedState };
     }
 
+    const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
+    if (cached) return { ...fallback, ...cached };
+    const legacy = parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_LEGACY_STATE)));
+    if (legacy) return { ...fallback, ...legacy };
     return fallback;
   } catch (err) {
     logSafeDiagnostic('warn', 'browser-storage', err);
-    return fallback;
+    const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
+    return cached ? { ...fallback, ...cached } : fallback;
   }
 }
 
@@ -1336,18 +1771,17 @@ export function saveWorkspaceDisclosurePreferences(preferences: WorkspaceDisclos
 }
 
 /**
- * Purges active and legacy state payloads from localStorage.
+ * Purges active and legacy portfolio state from localStorage and its scoped
+ * IndexedDB recovery records.
  */
-export function clearLocalData(): void {
+export async function clearLocalData(): Promise<void> {
   const storage = getBrowserStorage();
-  if (!storage) return;
   try {
-    removeStoredKeys(storage, [
-      scopedStorageKey(STORAGE_KEY_LEGACY_STATE),
-      scopedStorageKey(STORAGE_KEY_STATE),
-      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY)
-    ]);
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_LEGACY_STATE));
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_STATE));
+    storage?.removeItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY));
   } catch (err) {
     logSafeDiagnostic('error', 'browser-storage', err);
   }
+  await clearPortfolioStateRecoveryPersistence(activePortfolioStorageScope);
 }
