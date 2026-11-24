@@ -31,8 +31,16 @@ let queuedHistorySnapshot: ClosedHistorySnapshot | null = null;
 let historyWriteQueue: Promise<boolean> = Promise.resolve(true);
 let historyStorageInitialized = false;
 let historyStorageInitialization: Promise<void> | null = null;
+interface PendingPortfolioStateRecoveryWrite {
+  current: Record<string, unknown>;
+  recovery: Record<string, unknown> | null;
+  resetRecovery: boolean;
+}
+
 const portfolioStateSnapshotCacheByScope = new Map<string, Record<string, unknown>>();
 const portfolioStateRecoveryWriteQueuesByScope = new Map<string, Promise<boolean>>();
+const portfolioStateRecoveryPendingWritesByScope = new Map<string, PendingPortfolioStateRecoveryWrite>();
+const portfolioStateRecoveryScheduledWritesByScope = new Map<string, Promise<boolean>>();
 const portfolioStateRecoveryInitializationsByScope = new Map<string, Promise<void>>();
 
 const STORAGE_KEY_LEGACY_STATE = 'portfolio_state';
@@ -371,42 +379,114 @@ async function writePortfolioStateRecoveryRecordsToIndexedDB(
   }
 }
 
+function schedulePortfolioStateRecoveryWrite(scope: string): void {
+  if (portfolioStateRecoveryScheduledWritesByScope.has(scope)) return;
+
+  const scheduled = Promise.resolve().then(async () => {
+    portfolioStateRecoveryScheduledWritesByScope.delete(scope);
+    const pending = portfolioStateRecoveryPendingWritesByScope.get(scope);
+    if (!pending) return true;
+    portfolioStateRecoveryPendingWritesByScope.delete(scope);
+
+    const previousQueue = portfolioStateRecoveryWriteQueuesByScope.get(scope) ?? Promise.resolve(true);
+    const nextWrite = previousQueue.catch(() => false).then(async () => {
+      try {
+        await writePortfolioStateRecoveryRecordsToIndexedDB(
+          pending.current,
+          pending.recovery,
+          scope,
+          pending.resetRecovery
+        );
+        try {
+          getBrowserStorage()?.removeItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope));
+        } catch (error) {
+          logSafeDiagnostic('warn', 'browser-storage', error);
+        }
+        return true;
+      } catch (error) {
+        // Keep a local fallback only when the IndexedDB mirror cannot commit.
+        // It is best-effort and never blocks the active local snapshot write.
+        try {
+          if (pending.recovery) {
+            getBrowserStorage()?.setItem(
+              scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope),
+              JSON.stringify(pending.recovery)
+            );
+          }
+        } catch {
+          // The previous IndexedDB recovery record remains available when the
+          // failure was a transient quota/open issue.
+        }
+        logSafeDiagnostic('warn', 'browser-storage', error);
+        return false;
+      }
+    });
+    portfolioStateRecoveryWriteQueuesByScope.set(scope, nextWrite);
+    const succeeded = await nextWrite;
+    if (portfolioStateRecoveryWriteQueuesByScope.get(scope) === nextWrite) {
+      portfolioStateRecoveryWriteQueuesByScope.delete(scope);
+    }
+    return succeeded;
+  });
+
+  portfolioStateRecoveryScheduledWritesByScope.set(scope, scheduled);
+}
+
+/**
+ * Drain all recovery work already queued for a storage scope. A loop is needed
+ * because a new save can arrive while an earlier IndexedDB transaction is
+ * committing.
+ */
+async function flushPortfolioStateRecoveryScope(scope: string): Promise<boolean> {
+  let succeeded = true;
+  while (true) {
+    const scheduled = portfolioStateRecoveryScheduledWritesByScope.get(scope);
+    if (scheduled) {
+      succeeded = (await scheduled) && succeeded;
+      continue;
+    }
+
+    const inFlight = portfolioStateRecoveryWriteQueuesByScope.get(scope);
+    if (inFlight) {
+      succeeded = (await inFlight) && succeeded;
+      if (portfolioStateRecoveryWriteQueuesByScope.get(scope) === inFlight) {
+        portfolioStateRecoveryWriteQueuesByScope.delete(scope);
+      }
+      continue;
+    }
+
+    if (portfolioStateRecoveryPendingWritesByScope.has(scope)) {
+      schedulePortfolioStateRecoveryWrite(scope);
+      continue;
+    }
+    return succeeded;
+  }
+}
+
 function queuePortfolioStateRecoveryWrite(
   current: Record<string, unknown>,
   previous: Record<string, unknown> | null,
   scope: string,
   resetRecovery = false
 ): void {
-  const previousQueue = portfolioStateRecoveryWriteQueuesByScope.get(scope) ?? Promise.resolve(true);
-  const nextWrite = previousQueue.catch(() => false).then(async () => {
-    try {
-      await writePortfolioStateRecoveryRecordsToIndexedDB(current, previous, scope, resetRecovery);
-      portfolioStateSnapshotCacheByScope.set(scope, current);
-      try {
-        getBrowserStorage()?.removeItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope));
-      } catch (error) {
-        logSafeDiagnostic('warn', 'browser-storage', error);
-      }
-      return true;
-    } catch (error) {
-      // Keep a local fallback only when the IndexedDB mirror cannot commit.
-      // It is best-effort and never blocks the active local snapshot write.
-      try {
-        if (previous) {
-          getBrowserStorage()?.setItem(
-            scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, scope),
-            JSON.stringify(previous)
-          );
-        }
-      } catch {
-        // The preceding IndexedDB recovery record remains available when the
-        // failure was a transient quota/open issue.
-      }
-      logSafeDiagnostic('warn', 'browser-storage', error);
-      return false;
-    }
-  });
-  portfolioStateRecoveryWriteQueuesByScope.set(scope, nextWrite);
+  const pending = portfolioStateRecoveryPendingWritesByScope.get(scope);
+  if (pending) {
+    // Same-turn saves are coalesced to the latest active snapshot while keeping
+    // the last snapshot that was durable before this batch began. A reset
+    // replaces that baseline; a mutation after a queued reset retains it.
+    portfolioStateRecoveryPendingWritesByScope.set(scope, {
+      current,
+      recovery: resetRecovery ? current : pending.recovery ?? previous,
+      resetRecovery
+    });
+  } else {
+    portfolioStateRecoveryPendingWritesByScope.set(scope, {
+      current,
+      recovery: resetRecovery ? current : previous,
+      resetRecovery
+    });
+  }
+  schedulePortfolioStateRecoveryWrite(scope);
 }
 
 /**
@@ -534,14 +614,13 @@ export function initializePortfolioStateRecoveryStorage(
 
 /** Wait until queued state recovery mirrors have settled for the active scope. */
 export async function flushPortfolioStateRecoveryPersistence(): Promise<boolean> {
-  const scope = activePortfolioStorageScope;
-  return await (portfolioStateRecoveryWriteQueuesByScope.get(scope) ?? Promise.resolve(true));
+  return await flushPortfolioStateRecoveryScope(activePortfolioStorageScope);
 }
 
 /** Clear only the portfolio recovery rows; the separate closed-history rows remain intact. */
 export async function clearPortfolioStateRecoveryPersistence(scope = activePortfolioStorageScope): Promise<void> {
   portfolioStateSnapshotCacheByScope.delete(scope);
-  await (portfolioStateRecoveryWriteQueuesByScope.get(scope) ?? Promise.resolve(true)).catch(() => false);
+  await flushPortfolioStateRecoveryScope(scope);
   try {
     const db = await openHistoryDatabase(scope);
     try {
@@ -866,8 +945,8 @@ async function activatePortfolioStorageScopeNow(
   if (historyStorageInitialization) await historyStorageInitialization;
   await (historyWriteQueuesByScope.get(previousScope) ?? historyWriteQueue).catch(() => false);
   await (historyWriteQueuesByScope.get(nextScope) ?? Promise.resolve(true)).catch(() => false);
-  await (portfolioStateRecoveryWriteQueuesByScope.get(previousScope) ?? Promise.resolve(true)).catch(() => false);
-  await (portfolioStateRecoveryWriteQueuesByScope.get(nextScope) ?? Promise.resolve(true)).catch(() => false);
+  await flushPortfolioStateRecoveryScope(previousScope);
+  await flushPortfolioStateRecoveryScope(nextScope);
 
   if (previousScope === nextScope) {
     await initializePortfolioStateRecoveryStorage(nextScope, options);
