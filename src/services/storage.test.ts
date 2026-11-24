@@ -80,6 +80,10 @@ describe('storage service', () => {
       await clearSavedHistoryPersistence();
     }
     await activatePortfolioStorageScope('legacy');
+    // Reactivating the legacy scope initializes its caches; clear once more
+    // after activation so each test starts with an empty scope, not a warm read.
+    await clearPortfolioStateRecoveryPersistence('legacy');
+    await clearSavedHistoryPersistence();
     storageMap.clear();
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
