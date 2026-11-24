@@ -1460,7 +1460,10 @@ export default {
                 /^[0-9a-f]{40}$/i.test(env.DEPLOYMENT_SHA)
                 ? env.DEPLOYMENT_SHA
                 : null;
-            const headers = new Headers(corsHeaders);
+            const headers = new Headers();
+            for (const [name, value] of Object.entries(corsHeaders)) {
+                if (typeof value === "string") headers.set(name, value);
+            }
             headers.set("Content-Type", "application/json");
             headers.set("Cache-Control", "no-store");
             return new Response(JSON.stringify({
