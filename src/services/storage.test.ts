@@ -536,6 +536,57 @@ describe('storage service', () => {
       }
     });
 
+    it('chooses the newest complete same-account snapshot when localStorage lags IndexedDB', async () => {
+      if (typeof indexedDB === 'undefined') return;
+
+      const staleLocal = { activeView: 'AAPL', balance: 100, lastUpdated: 100 };
+      const localRecovery = { activeView: 'MSFT', balance: 150, lastUpdated: 150 };
+      const latestIndexed = { activeView: 'GOOGL', balance: 300, lastUpdated: 300 };
+      const previousIndexed = { activeView: 'TSLA', balance: 200, lastUpdated: 200 };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(staleLocal));
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(localRecovery));
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open stale-snapshot test database.'));
+      });
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('history', 'readwrite');
+        const store = transaction.objectStore('history');
+        store.put(latestIndexed, 'portfolio-state-v1');
+        store.put(previousIndexed, 'portfolio-state-v1:last-known-good');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('Could not seed IndexedDB portfolio snapshots.'));
+        transaction.onabort = () => reject(transaction.error || new Error('IndexedDB portfolio snapshot seed was aborted.'));
+      });
+      db.close();
+
+      await initializePortfolioStateRecoveryStorage('legacy');
+
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toMatchObject({
+        activeView: 'GOOGL',
+        balance: 300,
+        lastUpdated: 300
+      });
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2') || 'null')).toMatchObject(latestIndexed);
+      expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+
+      const verifyDb = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not reopen stale-snapshot test database.'));
+      });
+      const recovery = await new Promise<unknown>((resolve, reject) => {
+        const transaction = verifyDb.transaction('history', 'readonly');
+        const request = transaction.objectStore('history').get('portfolio-state-v1:last-known-good');
+        request.onsuccess = () => resolve(request.result);
+        transaction.onerror = () => reject(transaction.error || new Error('Could not verify IndexedDB recovery snapshot.'));
+      });
+      verifyDb.close();
+      expect(recovery).toMatchObject(previousIndexed);
+    });
+
     it('retains the local recovery snapshot when IndexedDB is unavailable', async () => {
       vi.stubGlobal('indexedDB', undefined);
       const current = JSON.stringify({ activeView: 'MSFT', balance: 250 });
