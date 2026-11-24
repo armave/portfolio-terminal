@@ -770,7 +770,7 @@ async function seedSyntheticPortfolio(page) {
 
 async function seedAuthenticatedPerformancePortfolio(page, fixture, worker) {
   const expectedFixtureEventIds = fixture.transactionEvents.map((event) => event.id);
-  await page.evaluate((seed) => {
+  await page.evaluate(async (seed) => {
     const key = 'margin_portfolio_state_dynamic_v2::owner';
     const previous = localStorage.getItem(key);
     const state = previous ? JSON.parse(previous) : {};
