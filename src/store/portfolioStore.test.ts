@@ -17,7 +17,12 @@ import { replayPortfolioTransactionLots, verifyPortfolioTransactionLotParity } f
 import { normalizeFinnhubStockSplits, toPortfolioCorporateActionEvent } from '../services/corporateActions';
 import { createMarketHistoryCorrectionEvent } from '../services/marketHistoryCorrections';
 import type { PortfolioState } from '../types/portfolio';
-import { flushSavedHistoryPersistence } from '../services/storage';
+import {
+  activatePortfolioStorageScope,
+  clearPortfolioStateRecoveryPersistence,
+  clearSavedHistoryPersistence,
+  flushSavedHistoryPersistence
+} from '../services/storage';
 
 const sharedTestStorage = new Map<string, string>();
 const sharedLocalStorage = {
@@ -103,9 +108,15 @@ function createClosedHistoryFeeAuditImportFixture() {
   return { sale, before, after, cashflows };
 }
 
-beforeEach(() => {
-  sharedTestStorage.clear();
+beforeEach(async () => {
   vi.stubGlobal('localStorage', sharedLocalStorage);
+  await activatePortfolioStorageScope('legacy');
+  // PortfolioStore commits queue an account-scoped IndexedDB recovery mirror.
+  // Clear that durable mirror and the closed-history rows between tests as well
+  // as localStorage; otherwise a prior test's portfolio can seed the next store.
+  await clearPortfolioStateRecoveryPersistence('legacy');
+  await clearSavedHistoryPersistence();
+  sharedTestStorage.clear();
 });
 
 afterEach(() => {
@@ -4999,7 +5010,7 @@ describe('auditable balance adjustment reversals', () => {
       .toEqual({ matches: true, discrepancies: [] });
   });
 
-  it('rejects unsupported trade reversals and prevents a reversal from creating negative cash', () => {
+  it('rejects unsupported trade reversals and prevents a reversal from creating negative cash', async () => {
     const tradeStore = new PortfolioStore();
     expect(tradeStore.buyStock('AAPL', 1, 100, '2026-11-08')).toBe(true);
     const tradeEvent = tradeStore.getState().transactionEvents?.at(-1);
@@ -5010,6 +5021,7 @@ describe('auditable balance adjustment reversals', () => {
     // Use an isolated persisted snapshot for the cash scenario; PortfolioStore
     // intentionally reloads the previous instance's committed local snapshot.
     sharedTestStorage.clear();
+    await clearPortfolioStateRecoveryPersistence('legacy');
     const cashStore = new PortfolioStore();
     expect(cashStore.setFreeCash(100)).toBe(true);
     const originalCashEvent = cashStore.getState().transactionEvents?.at(-1);
