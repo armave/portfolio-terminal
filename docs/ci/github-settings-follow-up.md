@@ -24,7 +24,7 @@ The committed reference files `github-rulesets/main-protection.json` and `github
 
 **Implication:** successful workflows currently provide evidence but are not enforced by the visible repository ruleset. The existing `main-protection` ruleset also permits a `RepositoryRole` bypass. Do not report #561 as complete until an administrator verifies the effective organization/classic rules, applies the required checks, creates the `dev` ruleset, reviews the bypass policy, and confirms the `cloudflare-production` environment controls.
 
-This PR updates repository code, workflow files, reference ruleset payloads, and this operational record. It does not change live repository rulesets, classic branch protection, environment reviewers, or deployment permissions; those are GitHub administrator settings and cannot be changed through the repository contents API used for this PR.
+This PR updates repository code, workflow files, regression coverage, and this operational record. It does not modify the existing reference ruleset payloads or change live repository rulesets, classic branch protection, environment reviewers, or deployment permissions; those are GitHub administrator settings and cannot be changed through the repository contents API used for this PR.
 
 ## Branch rulesets
 
