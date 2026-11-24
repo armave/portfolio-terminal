@@ -403,6 +403,13 @@ export function initializePortfolioStateRecoveryStorage(
       // copy and keep it readable; do not claim storage has been reclaimed.
       const fallback = localCurrent ?? localRecovery;
       if (fallback) portfolioStateSnapshotCacheByScope.set(scope, fallback);
+      if (storage && localCurrent && !localRecovery) {
+        try {
+          storage.setItem(recoveryKey, JSON.stringify(localCurrent));
+        } catch {
+          // A full localStorage quota must not block authenticated workspace startup.
+        }
+      }
       logSafeDiagnostic('warn', 'browser-storage', error);
       return;
     }
@@ -422,6 +429,15 @@ export function initializePortfolioStateRecoveryStorage(
     } catch (error) {
       // The existing local recovery copy is removed only after this commit.
       portfolioStateSnapshotCacheByScope.set(scope, current);
+      if (storage && recovery === current) {
+        try {
+          if (!parseJsonRecord(storage.getItem(recoveryKey))) {
+            storage.setItem(recoveryKey, JSON.stringify(current));
+          }
+        } catch {
+          // The indexedDB copy remains the preferred recovery path when present.
+        }
+      }
       logSafeDiagnostic('warn', 'browser-storage', error);
       return;
     }
@@ -850,11 +866,11 @@ async function activatePortfolioStorageScopeNow(
           throw new Error('The legacy administrator snapshot is not a valid object; its source was left untouched.');
         }
       }
-    }
-    if (!parseJsonRecord(storage.getItem(targetRecoveryStateKey))) {
-      const legacyRecovery = storage.getItem(STORAGE_KEY_STATE_RECOVERY);
-      if (legacyRecovery && parseJsonRecord(legacyRecovery)) {
-        storage.setItem(targetRecoveryStateKey, legacyRecovery);
+      if (!parseJsonRecord(storage.getItem(targetRecoveryStateKey))) {
+        const legacyRecovery = storage.getItem(STORAGE_KEY_STATE_RECOVERY);
+        if (legacyRecovery && parseJsonRecord(legacyRecovery)) {
+          storage.setItem(targetRecoveryStateKey, legacyRecovery);
+        }
       }
     }
 
