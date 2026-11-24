@@ -18,8 +18,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect-changes:
+    name: Classify changed files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run_codeql: ${{ steps.classify.outputs.run_codeql }}
+      run_workflow_security: ${{ steps.classify.outputs.run_workflow_security }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Classify changed paths conservatively
+        id: classify
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/ci-change-detection.mjs
+
   workflow-security:
     name: Workflow lint and security analysis
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.run_workflow_security == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -176,6 +204,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
   codeql:
     name: CodeQL JavaScript and TypeScript
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.run_codeql == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
