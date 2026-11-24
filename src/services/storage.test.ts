@@ -587,6 +587,42 @@ describe('storage service', () => {
       expect(recovery).toMatchObject(previousIndexed);
     });
 
+    it('coalesces same-turn saves while retaining the last committed recovery baseline', async () => {
+      if (typeof indexedDB === 'undefined') return;
+      const baseline = { activeView: 'AAPL', balance: 100, lastUpdated: 100 };
+      const intermediate = { activeView: 'MSFT', balance: 200, lastUpdated: 200 };
+      const latest = { activeView: 'GOOGL', balance: 300, lastUpdated: 300 };
+      storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(baseline));
+      await initializePortfolioStateRecoveryStorage('legacy');
+
+      expect(saveState(intermediate)).toBe(true);
+      expect(saveState(latest)).toBe(true);
+      await flushPortfolioStateRecoveryPersistence();
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open coalesced portfolio recovery database.'));
+      });
+      const records = await new Promise<{ current: unknown; recovery: unknown }>((resolve, reject) => {
+        const transaction = db.transaction('history', 'readonly');
+        const store = transaction.objectStore('history');
+        const currentRequest = store.get('portfolio-state-v1');
+        const recoveryRequest = store.get('portfolio-state-v1:last-known-good');
+        let current: unknown;
+        let recovery: unknown;
+        currentRequest.onsuccess = () => { current = currentRequest.result; };
+        recoveryRequest.onsuccess = () => { recovery = recoveryRequest.result; };
+        transaction.oncomplete = () => resolve({ current, recovery });
+        transaction.onerror = () => reject(transaction.error || new Error('Could not verify coalesced portfolio recovery records.'));
+        transaction.onabort = () => reject(transaction.error || new Error('Coalesced portfolio recovery read was aborted.'));
+      });
+      db.close();
+
+      expect(records.current).toMatchObject(latest);
+      expect(records.recovery).toMatchObject(baseline);
+    });
+
     it('retains the local recovery snapshot when IndexedDB is unavailable', async () => {
       vi.stubGlobal('indexedDB', undefined);
       const current = JSON.stringify({ activeView: 'MSFT', balance: 250 });
