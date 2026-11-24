@@ -131,7 +131,6 @@ describe('Margin projection and insights layout', () => {
   const appSource = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   const projectionSource = readFileSync(new URL('../components/ProjectionsTable.tsx', import.meta.url), 'utf8');
   const paginationSource = readFileSync(new URL('../components/TablePagination.tsx', import.meta.url), 'utf8');
-  const toastViewportSource = readFileSync(new URL('../components/ToastViewport.tsx', import.meta.url), 'utf8');
 
   it('places the projection table and market insights in the same responsive workspace row', () => {
     const workspaceStart = appSource.indexOf('id="marginDataWorkspace"');
@@ -194,6 +193,7 @@ describe('desk transitions and supporting layouts', () => {
   const closedSource = readFileSync(new URL('../components/ClosedHistoryDesk.tsx', import.meta.url), 'utf8');
   const settingsSource = readFileSync(new URL('../components/SettingsDesk.tsx', import.meta.url), 'utf8');
   const authSource = readFileSync(new URL('../components/AuthModal.tsx', import.meta.url), 'utf8');
+  const toastViewportSource = readFileSync(new URL('../components/ToastViewport.tsx', import.meta.url), 'utf8');
 
   it('animates Trades pagination on the responsive card list', () => {
     expect(closedSource).toContain('<div key={pagination.currentPage} id="closedTradesHistory" class="closed-history-page-transition grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"');
