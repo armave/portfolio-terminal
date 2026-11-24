@@ -43,6 +43,7 @@ describe('app localization', () => {
       'Transfer direction', 'Inflow', 'Outflow', 'Save activity',
       'Search activity', 'Category', 'All categories', 'All time',
       'Known net cash movement', 'No cash activity matches these filters.',
+      'Description', 'Source / quality', 'Currency', 'Cash / debt impact', 'Cash activity records',
       'records have incomplete classification, amount, currency, date or source identity. They remain visible and are excluded from USD totals.',
       'This account cannot post cash activity.', 'Enter a positive amount and a valid activity date.',
       'Activity was not posted. Check available USD cash, the amount and local storage, then retry.',
