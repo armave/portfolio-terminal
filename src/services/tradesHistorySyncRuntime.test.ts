@@ -183,6 +183,88 @@ describe('Trades history synchronization runtime', () => {
     expect(runtime.getDiagnostics()).toMatchObject({ stale: 1, succeeded: 0 });
   });
 
+  it('does not start work or publish state when there is no authenticated session', async () => {
+    let calls = 0;
+    const runtime = createTradesHistorySyncRuntime({
+      getSessionKey: () => null,
+      perform: async () => { calls += 1; return true; }
+    });
+
+    await expect(runtime.run({ mode: 'refresh', source: 'manual' })).resolves.toBe(false);
+    expect(calls).toBe(0);
+    expect(runtime.getSnapshot()).toMatchObject({ status: 'idle', operationId: null });
+    expect(runtime.getDiagnostics()).toMatchObject({ started: 0, activeOperations: 0 });
+  });
+
+  it('publishes operation snapshots to subscribers and stops after unsubscribe', async () => {
+    const response = deferred<boolean>();
+    const observed: string[] = [];
+    const runtime = createTradesHistorySyncRuntime({
+      getSessionKey: () => 'admin-session-a',
+      perform: async () => response.promise
+    });
+    const unsubscribe = runtime.subscribe((snapshot) => observed.push(snapshot.status));
+
+    expect(observed).toEqual(['idle']);
+    const pending = runtime.run({ mode: 'refresh', source: 'manual' });
+    await Promise.resolve();
+    expect(observed).toEqual(['idle', 'running']);
+
+    response.resolve(true);
+    await expect(pending).resolves.toBe(true);
+    expect(observed).toEqual(['idle', 'running', 'succeeded']);
+
+    unsubscribe();
+    await expect(runtime.run({ mode: 'recalculate', source: 'trades-desk' })).resolves.toBe(true);
+    expect(observed).toEqual(['idle', 'running', 'succeeded']);
+  });
+
+  it('converts a rejected reconciliation into a failed snapshot without leaving active work', async () => {
+    const runtime = createTradesHistorySyncRuntime({
+      getSessionKey: () => 'admin-session-a',
+      perform: async () => { throw new Error('synthetic reconciliation failure'); }
+    });
+
+    await expect(runtime.run({ mode: 'refresh', source: 'manual' })).resolves.toBe(false);
+    expect(runtime.getSnapshot()).toMatchObject({
+      status: 'failed',
+      mode: 'refresh',
+      source: 'manual'
+    });
+    expect(runtime.getDiagnostics()).toMatchObject({
+      started: 1,
+      failed: 1,
+      succeeded: 0,
+      activeOperations: 0
+    });
+  });
+
+  it('coalesces equivalent recalculations without starting duplicate work', async () => {
+    const response = deferred<boolean>();
+    let calls = 0;
+    const runtime = createTradesHistorySyncRuntime({
+      getSessionKey: () => 'admin-session-a',
+      perform: async () => { calls += 1; return response.promise; }
+    });
+
+    const first = runtime.run({
+      mode: 'recalculate',
+      source: 'trades-desk',
+      coalesceKey: 'same-fee-inputs'
+    });
+    const second = runtime.run({
+      mode: 'recalculate',
+      source: 'trades-desk',
+      coalesceKey: 'same-fee-inputs'
+    });
+    await Promise.resolve();
+    expect(calls).toBe(1);
+    expect(runtime.getDiagnostics().coalesced).toBe(1);
+
+    response.resolve(true);
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+  });
+
   it('keeps diagnostic snapshots bounded and free of account or portfolio identifiers', () => {
     const runtime = createTradesHistorySyncRuntime({
       getSessionKey: () => 'sensitive-account-session-token',
