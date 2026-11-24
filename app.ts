@@ -2092,13 +2092,9 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     }
   },
   importSavedAdminWorkspace: () => {
-    // activateWorkspaceStorage already loaded the scoped snapshot and history.
-    // Re-validate it in memory without a second localStorage commit: browser
-    // quota exhaustion must not block an otherwise valid sign-in.
-    const saved = loadSavedState(portfolioStore.getState());
-    if (!portfolioStore.replaceWorkspace(saved, false)) {
-      throw new Error('The saved administrator workspace could not be restored safely.');
-    }
+    // publishCurrentUser resolves only after activateWorkspaceStorage has
+    // already loaded this owner's scoped snapshot and history. Do not re-read
+    // or re-persist the same local workspace during startup.
     state = portfolioStore.getState();
   },
   applyOvernightRollover,
