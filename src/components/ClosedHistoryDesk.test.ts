@@ -337,7 +337,7 @@ describe('Trades history UX', () => {
   it('delays only the broker refresh indicator instead of combining unrelated background tasks', () => {
     const source = readSource();
     expect(source).toContain('useDelayedActivityVisibility(brokerTradesRefreshing, {');
-    expect(source).toContain('showDelayMs: 700');
+    expect(source).toContain('showDelayMs: WORKSPACE_ACTIVITY_INDICATOR_SHOW_DELAY_MS');
     expect(source).not.toContain('backgroundSyncPending');
   });
 });

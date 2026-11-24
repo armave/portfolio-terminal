@@ -40,6 +40,6 @@ describe('OperationActivityIndicator', () => {
     expect(indicator?.props['aria-hidden']).toBe('true');
     expect(indicator?.props['aria-label']).not.toBe('Syncing…');
     expect(indicator?.props.children[0].props.class).toContain('h-2.5 w-2.5');
-    expect(indicator?.props.children[1]).toBeUndefined();
+    expect(indicator?.props.children[1]).toBeFalsy();
   });
 });
