@@ -5010,7 +5010,7 @@ describe('auditable balance adjustment reversals', () => {
       .toEqual({ matches: true, discrepancies: [] });
   });
 
-  it('rejects unsupported trade reversals and prevents a reversal from creating negative cash', () => {
+  it('rejects unsupported trade reversals and prevents a reversal from creating negative cash', async () => {
     const tradeStore = new PortfolioStore();
     expect(tradeStore.buyStock('AAPL', 1, 100, '2026-11-08')).toBe(true);
     const tradeEvent = tradeStore.getState().transactionEvents?.at(-1);
@@ -5021,6 +5021,7 @@ describe('auditable balance adjustment reversals', () => {
     // Use an isolated persisted snapshot for the cash scenario; PortfolioStore
     // intentionally reloads the previous instance's committed local snapshot.
     sharedTestStorage.clear();
+    await clearPortfolioStateRecoveryPersistence('legacy');
     const cashStore = new PortfolioStore();
     expect(cashStore.setFreeCash(100)).toBe(true);
     const originalCashEvent = cashStore.getState().transactionEvents?.at(-1);

@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PortfolioStore } from './portfolioStore';
+import {
+  activatePortfolioStorageScope,
+  clearPortfolioStateRecoveryPersistence,
+  flushPortfolioStateRecoveryPersistence
+} from '../services/storage';
 
 const saved = new Map<string, string>();
 const localStorageMock = {
@@ -9,12 +14,15 @@ const localStorageMock = {
 };
 
 describe('portfolio trade mutation boundaries', () => {
-  beforeEach(() => {
-    saved.clear();
+  beforeEach(async () => {
     vi.stubGlobal('localStorage', localStorageMock);
+    await activatePortfolioStorageScope('legacy');
+    await clearPortfolioStateRecoveryPersistence('legacy');
+    saved.clear();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await flushPortfolioStateRecoveryPersistence();
     vi.unstubAllGlobals();
     saved.clear();
   });

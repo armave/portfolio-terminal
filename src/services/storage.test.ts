@@ -57,16 +57,34 @@ describe('storage service', () => {
     }
   };
 
+  const isolatedStorageScopes = [
+    'legacy',
+    'offline',
+    'owner',
+    'guest:local-recovery-a',
+    'guest:combined-disclosures-a',
+    'guest:combined-disclosures-b',
+    'guest:history-recovery-test',
+    'guest:history-database-loss',
+    'guest:reset-recovery-check',
+    'guest:history-fallback-check',
+    'guest:guest-a',
+    'guest:guest-b'
+  ];
+
   beforeEach(async () => {
     vi.stubGlobal('localStorage', localStorageMock);
+    for (const scope of isolatedStorageScopes) {
+      await activatePortfolioStorageScope(scope);
+      await clearPortfolioStateRecoveryPersistence(scope);
+      await clearSavedHistoryPersistence();
+    }
     await activatePortfolioStorageScope('legacy');
     storageMap.clear();
-    await clearPortfolioStateRecoveryPersistence('legacy');
     vi.clearAllMocks();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    await clearSavedHistoryPersistence();
   });
 
   afterEach(() => {
