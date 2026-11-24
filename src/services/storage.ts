@@ -848,9 +848,9 @@ export function initializeSavedHistoryStorage(
  * Switch the active browser portfolio namespace. All administrators share the
  * owner workspace; each guest has a distinct local workspace.
  *
- * Legacy local data is copied only into the owner namespace. Its source remains
- * available for recovery and is never used as a guest/offline fallback after
- * scoped authenticated storage has been activated.
+ * Legacy administrator snapshots are migrated directly into the owner-scoped
+ * IndexedDB current/recovery records. Their localStorage sources are removed
+ * only after commit and are never read by guest/offline workspaces.
  */
 async function activatePortfolioStorageScopeNow(
   scope: string,
