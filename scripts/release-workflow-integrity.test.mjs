@@ -23,6 +23,12 @@ describe('change-aware CI execution', () => {
     expect(local).not.toContain("npm('test')");
   });
 
+  it('does not request or consume coverage artifacts when the full Vitest run fails', () => {
+    const ci = readRepoFile('.github/workflows/ci.yml');
+    expect(ci).toContain("if: steps.tests.outcome == 'success'");
+    expect(ci).toContain("needs.quality.result == 'success'");
+  });
+
   it('defaults change detection to full validation and preserves release deployment gates', () => {
     const classifier = readRepoFile('scripts/ci-change-classifier.mjs');
     const detector = readRepoFile('scripts/ci-change-detection.mjs');

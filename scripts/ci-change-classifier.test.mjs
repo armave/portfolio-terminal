@@ -32,7 +32,7 @@ describe('CI changed-file classification', () => {
   });
   it('runs workflow validation and unit tests without rebuilding for workflow-only changes', () => {
     expect(classifyChangedFiles([
-      '.github/workflows/ci.yml', 'docs/reliability-release-gates.md'
+      '.github/workflows/financial-regression.yml', 'docs/reliability-release-gates.md'
     ])).toMatchObject({
       classification: 'workflow-only', runQuality: true, runBrowser: false,
       runCodeql: false, runWorkflowSecurity: true
