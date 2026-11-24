@@ -997,9 +997,20 @@ async function activatePortfolioStorageScopeNow(
     // Do not copy another multi-megabyte state into localStorage here. The
     // account-scoped recovery initializer imports legacy/current/recovery
     // candidates directly into IndexedDB after the active scope is switched.
+    let indexedTargetState: { current: Record<string, unknown> | null; recovery: Record<string, unknown> | null } | null = null;
+    let indexedTargetStateReadFailed = false;
+    try {
+      indexedTargetState = await readPortfolioStateRecoveryRecordsFromIndexedDB(nextScope);
+    } catch {
+      // A blocked/unavailable database must not turn a legacy validation check
+      // into an account sign-in failure. The initializer below retains sources.
+      indexedTargetStateReadFailed = true;
+    }
     const targetStateIsValid = Boolean(
       parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_STATE, nextScope))) ||
-      parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, nextScope)))
+      parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_STATE_RECOVERY, nextScope))) ||
+      indexedTargetState?.current ||
+      indexedTargetState?.recovery
     );
     const legacyCurrent = storage.getItem(STORAGE_KEY_STATE);
     const legacyRecovery = storage.getItem(STORAGE_KEY_STATE_RECOVERY);
@@ -1010,7 +1021,7 @@ async function activatePortfolioStorageScopeNow(
       parseJsonRecord(legacyRecovery) ||
       parseJsonRecord(legacyFallback)
     );
-    if (!targetStateIsValid && hasLegacyPayload && !hasValidLegacySnapshot) {
+    if (!targetStateIsValid && !indexedTargetStateReadFailed && hasLegacyPayload && !hasValidLegacySnapshot) {
       throw new Error('The legacy administrator snapshot is not a valid object; its source was left untouched.');
     }
 

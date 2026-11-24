@@ -1305,6 +1305,42 @@ describe('storage service', () => {
     expect(records.recovery).toMatchObject(legacyRecovery);
   });
 
+  it('keeps an existing owner IndexedDB portfolio when stale legacy data is malformed', async () => {
+    if (typeof indexedDB === 'undefined') return;
+    await clearPortfolioStateRecoveryPersistence('owner');
+    const ownerCurrent = { activeView: 'GOOGL', balance: 350, lastUpdated: 300 };
+    const ownerRecovery = { activeView: 'AAPL', balance: 200, lastUpdated: 200 };
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('portfolio-terminal-history-cache::owner', 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains('history')) {
+          request.result.createObjectStore('history');
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open existing owner recovery database.'));
+    });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = db.transaction('history', 'readwrite');
+      const store = transaction.objectStore('history');
+      store.put(ownerCurrent, 'portfolio-state-v1');
+      store.put(ownerRecovery, 'portfolio-state-v1:last-known-good');
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error('Could not seed owner recovery records.'));
+      transaction.onabort = () => reject(transaction.error || new Error('Owner recovery seed was aborted.'));
+    });
+    db.close();
+
+    storageMap.set('margin_portfolio_state_dynamic_v2', '{malformed-legacy-state');
+    storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', '{malformed-legacy-recovery');
+    storageMap.set('portfolio_state', '{malformed-legacy-fallback');
+
+    await expect(activatePortfolioStorageScope('owner', { migrateLegacy: true })).resolves.toBeUndefined();
+
+    expect(loadSavedState({})).toMatchObject(ownerCurrent);
+    expect(storageMap.get('margin_portfolio_state_dynamic_v2::owner')).toMatch(JSON.stringify(ownerCurrent));
+  });
+
   it('preserves legacy portfolio sources when owner IndexedDB migration is unavailable', async () => {
     vi.stubGlobal('indexedDB', undefined);
     const current = { activeView: 'GOOGL', balance: 350, lastUpdated: 300 };
