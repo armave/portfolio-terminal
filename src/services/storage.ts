@@ -1496,22 +1496,17 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
         continue;
       }
 
-      if (key !== canonicalKey) {
-        try {
-          // Complete a recoverable interrupted/malformed local snapshot on the
-          // next read. Keep the recovery row in place until a later good save.
-          storage.setItem(canonicalKey, raw);
-          console.warn('Recovered the local portfolio snapshot from a scoped recovery copy.');
-        } catch (error) {
-          logSafeDiagnostic('warn', 'browser-storage', error);
-        }
-      }
-
       const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
       const newest = selectNewestPortfolioStateSnapshots([parsed, cached ?? null]).current ?? parsed;
-      if (newest !== parsed && key === canonicalKey) {
+      if (key !== canonicalKey || newest !== parsed) {
         try {
+          // Repair only after comparing the local candidate with the latest
+          // same-scope snapshot cached from IndexedDB. A stale local recovery
+          // row must never replace a newer account snapshot.
           storage.setItem(canonicalKey, JSON.stringify(newest));
+          if (key !== canonicalKey) {
+            console.warn('Recovered the local portfolio snapshot from the newest scoped recovery record.');
+          }
         } catch (error) {
           logSafeDiagnostic('warn', 'browser-storage', error);
         }

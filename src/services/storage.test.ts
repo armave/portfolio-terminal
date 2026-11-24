@@ -587,6 +587,35 @@ describe('storage service', () => {
       expect(recovery).toMatchObject(previousIndexed);
     });
 
+    it('does not repair a damaged canonical key from an older local recovery row when IndexedDB has a newer snapshot', async () => {
+      if (typeof indexedDB === 'undefined') return;
+      const latest = { activeView: 'GOOGL', balance: 300, lastUpdated: 300 };
+      const previous = { activeView: 'TSLA', balance: 200, lastUpdated: 200 };
+      const staleLocalRecovery = { activeView: 'AAPL', balance: 100, lastUpdated: 100 };
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('portfolio-terminal-history-cache', 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('Could not open stale-local recovery database.'));
+      });
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('history', 'readwrite');
+        const store = transaction.objectStore('history');
+        store.put(latest, 'portfolio-state-v1');
+        store.put(previous, 'portfolio-state-v1:last-known-good');
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error('Could not seed latest portfolio recovery.'));
+        transaction.onabort = () => reject(transaction.error || new Error('Latest portfolio recovery seed was aborted.'));
+      });
+      db.close();
+
+      await initializePortfolioStateRecoveryStorage('legacy');
+      storageMap.set('margin_portfolio_state_dynamic_v2', '{damaged-active-snapshot');
+      storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(staleLocalRecovery));
+
+      expect(loadSavedState({ activeView: 'COMBINED', balance: 0 })).toMatchObject(latest);
+      expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2') || 'null')).toMatchObject(latest);
+    });
+
     it('coalesces same-turn saves while retaining the last committed recovery baseline', async () => {
       if (typeof indexedDB === 'undefined') return;
       const baseline = { activeView: 'AAPL', balance: 100, lastUpdated: 100 };
