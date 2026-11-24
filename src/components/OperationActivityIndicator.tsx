@@ -1,7 +1,7 @@
 import type { JSX } from 'preact';
 
-export type OperationActivityTone = 'cyan' | 'purple' | 'neutral';
-export type OperationActivitySize = 'compact' | 'inline';
+type OperationActivityTone = 'cyan' | 'purple' | 'neutral';
+type OperationActivitySize = 'compact' | 'inline';
 
 export interface OperationActivityIndicatorProps {
   /** Caller-owned presentation state; this component never starts or tracks work. */
