@@ -50,9 +50,20 @@ jobs:
         id: lint
         run: npm run lint
 
-      - name: Run Vitest unit and Worker suites
+      - name: Run Vitest unit, Worker and V8 coverage suites
         id: tests
-        run: npm test
+        run: npm run test:coverage
+
+      - name: Upload coverage report from the single Vitest run
+        if: always() && steps.tests.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vitest-coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            coverage/coverage-final.json
+            coverage/coverage-summary.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Smoke-test Vite development server
         id: dev_server
@@ -123,7 +134,7 @@ jobs:
             echo "| npm ci | $DEPENDENCIES_RESULT |"
             echo "| Typecheck | $TYPECHECK_RESULT |"
             echo "| Oxlint | $LINT_RESULT |"
-            echo "| Vitest | $TESTS_RESULT |"
+            echo "| Vitest + V8 coverage | $TESTS_RESULT |
             echo "| Vite development server smoke | $DEV_SERVER_RESULT |"
             echo "| Dead-code validation | $DEAD_CODE_RESULT |"
             echo "| Full dependency audit | $DEPENDENCY_AUDIT_RESULT |"
@@ -152,6 +163,26 @@ jobs:
       - name: Build production site
         id: build
         run: npm run build
+
+      - name: Write immutable build provenance into the artifact
+        env:
+          BUILD_COMMIT: ${{ github.sha }}
+          BUILD_REF: ${{ github.ref }}
+          BUILD_RUN_ID: ${{ github.run_id }}
+          BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
+          BUILD_EVENT: ${{ github.event_name }}
+        run: |
+          node --input-type=module -e '
+            import { writeFileSync } from "node:fs";
+            const provenance = {
+              commit: process.env.BUILD_COMMIT,
+              ref: process.env.BUILD_REF,
+              runId: process.env.BUILD_RUN_ID,
+              runAttempt: process.env.BUILD_RUN_ATTEMPT,
+              event: process.env.BUILD_EVENT
+            };
+            writeFileSync("dist/build-provenance.json", JSON.stringify(provenance, null, 2) + "\n");
+          '
 
       - name: Upload production build for browser journeys
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -340,35 +371,58 @@ jobs:
 
   coverage:
     name: Coverage baseline and thresholds
+    needs: quality
+    if: ${{ always() }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 10
     permissions:
+      actions: read
       contents: read
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install exact lockfile dependencies
-        run: npm ci
-
-      - name: Run Vitest with V8 coverage
-        id: coverage
-        run: npm run test:coverage
-
-      - name: Upload financial-domain and Worker coverage evidence
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - name: Download coverage report from the quality job
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: vitest-coverage-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            coverage/coverage-final.json
-            coverage/coverage-summary.json
+          path: coverage/
+
+      - name: Recheck aggregate floors and publish measured coverage
+        id: coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s coverage/coverage-summary.json
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync('coverage/coverage-summary.json', 'utf8'));
+          const total = report.total;
+          if (!total || typeof total !== 'object') throw new Error('Coverage summary has no aggregate total.');
+          const floors = { lines: 80, statements: 80, functions: 85, branches: 70 };
+          const rows = [];
+          for (const [metric, floor] of Object.entries(floors)) {
+            const measured = total[metric]?.pct;
+            if (typeof measured !== 'number' || !Number.isFinite(measured)) {
+              throw new Error('Coverage report is missing a valid ' + metric + ' percentage.');
+            }
+            rows.push({ metric, measured, floor });
+            if (measured < floor) throw new Error(metric + ' coverage ' + measured + '% is below the ' + floor + '% floor.');
+          }
+          const markdown = [
+            '## Financial, portfolio-store and Worker coverage',
+            '',
+            '| Metric | Measured | Required floor |',
+            '|---|---:|---:|',
+            ...rows.map(row => '| ' + row.metric + ' | ' + row.measured.toFixed(2) + '% | ' + row.floor + '% |'),
+            '',
+            'Generated by the single full Vitest execution in the quality job; this job consumes its exact artifact and does not rerun tests.'
+          ].join('\\n');
+          process.stdout.write(markdown + '\\n');
+          if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown + '\\n');
+          NODE
+
+      - name: Upload coverage evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vitest-coverage-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: coverage/
           if-no-files-found: error
           retention-days: 30
