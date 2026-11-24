@@ -1216,6 +1216,73 @@ describe('storage service', () => {
       .toEqual(legacyHistory);
   });
 
+  it('migrates retained legacy snapshots into owner IndexedDB before reclaiming localStorage quota', async () => {
+    if (typeof indexedDB === 'undefined') return;
+    await clearPortfolioStateRecoveryPersistence('owner');
+
+    const legacyCurrent = {
+      activeView: 'GOOGL',
+      balance: 350,
+      positions: { GOOGL: { shares: 5 } },
+      lastUpdated: 300
+    };
+    const legacyRecovery = {
+      activeView: 'AAPL',
+      balance: 200,
+      positions: { AAPL: { shares: 2 } },
+      lastUpdated: 200
+    };
+    const olderLegacy = { activeView: 'MSFT', balance: 100, lastUpdated: 100 };
+    storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(legacyCurrent));
+    storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(legacyRecovery));
+    storageMap.set('portfolio_state', JSON.stringify(olderLegacy));
+
+    await activatePortfolioStorageScope('owner', { migrateLegacy: true });
+
+    expect(loadSavedState({})).toMatchObject(legacyCurrent);
+    expect(storageMap.has('margin_portfolio_state_dynamic_v2')).toBe(false);
+    expect(storageMap.has('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(false);
+    expect(storageMap.has('portfolio_state')).toBe(false);
+    expect(JSON.parse(storageMap.get('margin_portfolio_state_dynamic_v2::owner') || 'null'))
+      .toMatchObject(legacyCurrent);
+
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('portfolio-terminal-history-cache::owner', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Could not open owner portfolio recovery database.'));
+    });
+    const records = await new Promise<{ current: unknown; recovery: unknown }>((resolve, reject) => {
+      const transaction = db.transaction('history', 'readonly');
+      const store = transaction.objectStore('history');
+      const currentRequest = store.get('portfolio-state-v1');
+      const recoveryRequest = store.get('portfolio-state-v1:last-known-good');
+      let current: unknown;
+      let recovery: unknown;
+      currentRequest.onsuccess = () => { current = currentRequest.result; };
+      recoveryRequest.onsuccess = () => { recovery = recoveryRequest.result; };
+      transaction.oncomplete = () => resolve({ current, recovery });
+      transaction.onerror = () => reject(transaction.error || new Error('Could not verify owner portfolio recovery records.'));
+      transaction.onabort = () => reject(transaction.error || new Error('Owner portfolio recovery read was aborted.'));
+    });
+    db.close();
+    expect(records.current).toMatchObject(legacyCurrent);
+    expect(records.recovery).toMatchObject(legacyRecovery);
+  });
+
+  it('preserves legacy portfolio sources when owner IndexedDB migration is unavailable', async () => {
+    vi.stubGlobal('indexedDB', undefined);
+    const current = { activeView: 'GOOGL', balance: 350, lastUpdated: 300 };
+    const recovery = { activeView: 'AAPL', balance: 200, lastUpdated: 200 };
+    storageMap.set('margin_portfolio_state_dynamic_v2', JSON.stringify(current));
+    storageMap.set('margin_portfolio_state_dynamic_v2_recovery_v1', JSON.stringify(recovery));
+
+    await activatePortfolioStorageScope('owner', { migrateLegacy: true });
+
+    expect(loadSavedState({})).toMatchObject(current);
+    expect(storageMap.get('margin_portfolio_state_dynamic_v2')).toBe(JSON.stringify(current));
+    expect(storageMap.get('margin_portfolio_state_dynamic_v2_recovery_v1')).toBe(JSON.stringify(recovery));
+    expect(storageMap.has('margin_portfolio_state_dynamic_v2::owner')).toBe(false);
+  });
   it('isolates owner, guest, and offline snapshots plus broker history and rules', async () => {
     const legacyState = {
       balance: -275,

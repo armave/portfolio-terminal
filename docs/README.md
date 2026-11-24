@@ -17,7 +17,7 @@ This directory contains maintained product and engineering references, current o
 - [Cash Activity ledger](cash-activity-ledger.md) — shared broker/manual cashflow classification, evidence-only imports, admin-owned USD postings, and reconciliation/performance rules.
 - [Role-based portfolio synchronization](ROLE_SYNC_POLICY.md) — role-specific refresh policy and data visibility.
 - [Settings information architecture and safety UX](settings-ux.md) — role-aware navigation, synchronization-status semantics, backup/recovery separation, and financial-setting presentation.
-- [Session-scoped browser storage](session-scoped-browser-storage.md) — local storage namespaces, authenticated workspace transitions, and account-scoped IndexedDB recovery for portfolio snapshots and history.
+- [Session-scoped browser storage](session-scoped-browser-storage.md) — local storage namespaces, authenticated workspace transitions, and account-scoped IndexedDB recovery/migration for current, recovery, and legacy portfolio snapshots and history.
 - [Progressive Web App](pwa.md) — install metadata, safe app-shell caching, offline limitations, reconnect checks and production smoke coverage.
 - [Freedom TradeNet market-data integration](FREEDOM_MARKET_DATA.md) — Worker-backed read-only quote, market-status, order, and depth paths.
 - [TradeNet account risk controls](TRADE_NET_ACCOUNT_CONTROLS_IMPLEMENTATION.md) — read-only integration specification for account and instrument constraints.

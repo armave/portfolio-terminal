@@ -15,7 +15,7 @@ This contract scopes browser-local portfolio data. It does **not** create indepe
 | `offline` | Unauthenticated use after scoped storage has been activated | Starts empty and cannot fall back to the previous authenticated workspace |
 | `legacy` | Pre-migration browser data | Used only before scoped storage has been activated; copied into `owner` on the first administrator activation |
 
-Snapshots, broker rules, and the broker-execution/cashflow history sidecar use the active scope. Portfolio snapshot recovery and closed history share the same account-scoped IndexedDB database but use separate records. The compact active portfolio snapshot remains in localStorage for the synchronous PortfolioStore commit boundary; its full last-known-good copy is stored in IndexedDB rather than duplicated in localStorage. The broker-execution/cashflow history sidecar also uses IndexedDB, with its existing bounded localStorage fallback using the same namespace.
+Snapshots, broker rules, and the broker-execution/cashflow history sidecar use the active scope. Portfolio snapshot recovery and closed history share the same account-scoped IndexedDB database but use separate records. The compact active portfolio snapshot remains in localStorage for the synchronous PortfolioStore commit boundary; its full last-known-good copy is stored in IndexedDB rather than duplicated in localStorage. The first administrator migration also moves retained pre-scope copies into that same IndexedDB database before reclaiming their old localStorage keys. The broker-execution/cashflow history sidecar also uses IndexedDB, with its existing bounded localStorage fallback using the same namespace.
 
 Device-level preferences such as the selected desk and the administrator/guest quote-refresh interval remain device preferences. The Gateway Secret remains in its existing device-secure credential store; it is not copied into portfolio workspace snapshots.
 
@@ -45,7 +45,7 @@ A failed identity lookup invalidates the session, moves to the offline namespace
 
 ## Legacy migration and recovery
 
-The first administrator activation copies the existing unscoped state and history into the owner namespace only when the corresponding owner record is absent. The source legacy records are not deleted, so migration can be inspected or recovered if a later step fails.
+The first administrator activation imports the unscoped legacy active/recovery snapshots directly into the owner-scoped IndexedDB database, together with any existing owner-scoped records. It keeps the two newest complete snapshots by their persisted lastUpdated values. Only after both IndexedDB records commit does it remove the unscoped legacy state/recovery keys and the redundant scoped local recovery key, then repair the single scoped active localStorage snapshot. If IndexedDB is unavailable or the transaction fails, every original local/legacy source remains untouched and the selected portfolio remains available from the in-memory cache for that session. Guests and offline workspaces never inspect or remove the administrator legacy keys.
 
 After the scope marker is set, a page reload starts in `offline`; it never automatically reads unscoped legacy data. An authenticated administrator activation selects `owner`, while a guest activation selects only that guest's namespace.
 

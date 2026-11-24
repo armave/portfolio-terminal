@@ -1237,7 +1237,8 @@ function persistPortfolioSnapshot(
   }
   const stateChanged = previousComparable !== nextComparable;
 
-  const previousStateSnapshot = parseJsonRecord(previousRaw ?? null);
+  const previousStateSnapshot = parseJsonRecord(previousRaw ?? null) ??
+    portfolioStateSnapshotCacheByScope.get(scope) ?? null;
   const nextStateSnapshot = parseJsonRecord(persistedStateJson);
   if (!nextStateSnapshot) return { success: false, stateChanged: false, savedAt: null };
 
