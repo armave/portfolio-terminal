@@ -1054,6 +1054,7 @@ export function inspectPortfolioTransactionJournalReplayCoverage(
       }
 
       case 'cash.deposit':
+      case 'interest.income':
       case 'cash.withdrawal':
       case 'cash.transfer':
       case 'dividend':

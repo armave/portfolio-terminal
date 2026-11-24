@@ -5252,6 +5252,39 @@ describe('manual cash activity posting', () => {
     expect(store.getState().transactionEvents).toHaveLength(beforeEvents + 1);
   });
 
+  it('keeps positive broker cash separate while posting app cash and rejects debt capitalization against cash', () => {
+    const store = new PortfolioStore();
+    store.setCashBalance(100);
+    store.setState({ balance: 500 });
+
+    expect(store.postCashActivity(command({
+      category: 'fee', amount: 10, idempotencyKey: 'cash-activity-positive-cash-fee'
+    }))).toBe(true);
+    expect(store.getState().balance).toBe(500);
+    expect(store.getState().cashCushion.freeCash).toBe(90);
+
+    const beforeInterest = store.getState();
+    expect(store.postCashActivity(command({
+      category: 'margin_interest', amount: 2, idempotencyKey: 'cash-activity-positive-cash-interest'
+    }))).toBe(false);
+    expect(store.getState()).toBe(beforeInterest);
+  });
+
+  it('records manual credited interest as replayable cash without treating it as an external transfer', () => {
+    const store = new PortfolioStore();
+    store.setCashBalance(10);
+    expect(store.postCashActivity(command({
+      category: 'interest_income', amount: 1.25, idempotencyKey: 'cash-activity-credited-interest'
+    }))).toBe(true);
+    expect(store.getState().cashCushion.freeCash).toBe(11.25);
+    expect(store.getState().transactionEvents?.at(-1)).toMatchObject({
+      type: 'interest.income', cashflowCategory: 'interest_income', cashDelta: 1.25
+    });
+    expect(inspectPortfolioTransactionJournalReplayCoverage([
+      store.getState().transactionEvents!.at(-1)!
+    ])).toMatchObject({ status: 'complete', replayableCount: 1, evidenceOnlyCount: 0 });
+  });
+
   it('rejects unaffordable outflows without changing cash, debt or journal', () => {
     const store = new PortfolioStore();
     store.setCashBalance(10);

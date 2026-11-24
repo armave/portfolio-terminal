@@ -1645,26 +1645,26 @@ export class PortfolioStore {
         : typeof rawFreeCash === 'string' && rawFreeCash.trim() !== ''
           ? Number(rawFreeCash)
           : Number.NaN;
-      const signedDebt = state.balance;
+      const signedBalance = state.balance;
       const realizedMarginCharged = state.realizedMarginCharged;
       if (![freeCash, signedDebt, realizedMarginCharged].every(value =>
         typeof value === 'number' && Number.isFinite(value)) ||
-        freeCash < 0 || signedDebt > 0 || realizedMarginCharged < 0) { rejected = true; return null; }
+        freeCash < 0 || (isCapitalizedInterest && signedBalance > 0) || realizedMarginCharged < 0) { rejected = true; return null; }
       const nextFreeCash = freeCash + cashDelta;
       if (!Number.isFinite(nextFreeCash) || nextFreeCash < -1e-8) { rejected = true; return null; }
       const normalizedFreeCash = Math.abs(nextFreeCash) < 1e-8 ? 0 : nextFreeCash;
       const activeTickers = Object.keys(state.positions || {});
       const recordAsRealized = activeTickers.length === 0 || getTotalPortfolioInvested(state) === 0;
       const realizedMarginChargeDelta = isCapitalizedInterest && recordAsRealized ? input.amount : 0;
-      const nextDebt = isCapitalizedInterest ? signedDebt - input.amount : signedDebt;
+      const nextBalance = isCapitalizedInterest ? signedBalance - input.amount : signedBalance;
       const nextRealizedCharge = realizedMarginCharged + realizedMarginChargeDelta;
-      if (![nextDebt, nextRealizedCharge].every(Number.isFinite)) { rejected = true; return null; }
+      if (![nextBalance, nextRealizedCharge].every(Number.isFinite)) { rejected = true; return null; }
       return {
         state: {
           ...state,
           cashBalance: normalizedFreeCash,
           cashCushion: { ...state.cashCushion, freeCash: normalizedFreeCash },
-          balance: nextDebt,
+          balance: nextBalance,
           realizedMarginCharged: nextRealizedCharge
         },
         event: {
