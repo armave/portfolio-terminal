@@ -28,7 +28,8 @@ import type {
   ClosedHistoryPerformanceFilter,
   ClosedHistorySortOrder
 } from '../features/trades/closedHistoryRows';
-import { useDelayedActivityVisibility } from '../ui/delayedActivityVisibility';
+import { useDelayedActivityVisibility, WORKSPACE_ACTIVITY_INDICATOR_SHOW_DELAY_MS } from '../ui/delayedActivityVisibility';
+import { OperationActivityIndicator } from './OperationActivityIndicator';
 
 const brokerAdapter = brokerAdapterRegistry.get('freedom-tradenet');
 const normalizeBrokerExecutions = (value: unknown): FreedomExecutedTrade[] =>
@@ -617,7 +618,7 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
   // Only broker execution refreshes animate the header. Cloud-history hydration,
   // cashflow reconciliation and local fee calculation remain independent work.
   const showBrokerRefreshIndicator = useDelayedActivityVisibility(brokerTradesRefreshing, {
-    showDelayMs: 700,
+    showDelayMs: WORKSPACE_ACTIVITY_INDICATOR_SHOW_DELAY_MS,
     minimumVisibleMs: 650
   });
   const locale = getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US';
@@ -651,14 +652,13 @@ export function ClosedHistoryDesk({ accountId, isSessionCurrent = () => true, is
               </span>
               <span class="text-slate-400">{lastBrokerRefreshAt ? `${translateText('Last REST history refresh', getAppLanguage())}: ${lastBrokerRefreshText}` : lastBrokerRefreshText}</span>
               <span class="text-slate-400">{translateText('Cashflow reconciliation', getAppLanguage())}: {translateText(cashflowStatus, getAppLanguage())}</span>
-              {showBrokerRefreshIndicator && (
-                <span role="status" aria-label={translateText('Refreshing TradeNet execution history…', getAppLanguage())} title={translateText('Refreshing TradeNet execution history…', getAppLanguage())} class="inline-flex items-center gap-1.5 text-purple-300">
-                  <svg viewBox="0 0 16 16" class="h-4 w-4 flex-none animate-spin text-purple-300 motion-reduce:animate-none" fill="none" aria-hidden="true">
-                    <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="24 14" />
-                  </svg>
-                  {translateText('Refreshing history…', getAppLanguage())}
-                </span>
-              )}
+<OperationActivityIndicator
+                visible={showBrokerRefreshIndicator}
+                label={translateText('Refreshing history…', getAppLanguage())}
+                ariaLabel={translateText('Refreshing TradeNet execution history…', getAppLanguage())}
+                tone="purple"
+                size="inline"
+              />
             </div>
             <button type="button" onClick={retryBrokerTrades} disabled={brokerTradesRefreshing}
               class="inline-flex min-h-10 items-center justify-center gap-2 rounded border border-slate-700 px-3 font-semibold text-slate-200 transition hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400 disabled:cursor-not-allowed disabled:opacity-50"

@@ -1268,7 +1268,8 @@ describe('Trades UX localization parity', () => {
       'Known fees and commissions are a lower bound; missing commission inputs may increase actual costs.',
       'Net P&L unavailable because required trade or cost-basis data is incomplete.',
       'Closed History synchronization failed. Check the activity log and retry.',
-      'Closed History refresh could not be confirmed. Your saved history is still available; check the activity log and retry.'
+      'Closed History refresh could not be confirmed. Your saved history is still available; check the activity log and retry.',
+      'Risk data quality','Current','Provisional estimate','Incomplete','Unavailable','Refreshing history…'
     ];
     for (const english of copy) {
       expect(RU_TRANSLATIONS[english], english).toBeTruthy();

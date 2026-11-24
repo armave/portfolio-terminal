@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'preact/hooks';
 import { getAppLanguage, translateText } from '../services/i18n';
 import type { CloudStatus } from '../ui/uiStateStore';
+import { OperationActivityIndicator } from './OperationActivityIndicator';
 import {
   ACTIVITY_INDICATOR_MIN_VISIBLE_MS,
+  WORKSPACE_ACTIVITY_INDICATOR_SHOW_DELAY_MS,
   useDelayedActivityVisibility
 } from '../ui/delayedActivityVisibility';
 
 export type CloudSyncTone = 'neutral' | 'success' | 'pending' | 'warning' | 'conflict' | 'error';
 
 /** Avoid flashing the header activity dot for short cloud checkpoints. */
-export const CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS = 700;
+export const CLOUD_SYNC_PENDING_VISIBILITY_DELAY_MS = WORKSPACE_ACTIVITY_INDICATOR_SHOW_DELAY_MS;
 export const CLOUD_SYNC_PENDING_MIN_VISIBLE_MS = ACTIVITY_INDICATOR_MIN_VISIBLE_MS;
 
 export function resolveCloudSyncDisplayTone(
@@ -141,7 +143,9 @@ export function CloudSyncIndicator({
         aria-describedby={exactTime ? 'cloudStatusExactTime' : undefined}
         onClick={() => setDetailsOpen((open) => !open)}
       >
-        <span class="cloud-sync-indicator__dot" aria-hidden="true" />
+        {displayTone === 'pending'
+          ? <OperationActivityIndicator visible label={statusLabel} size="compact" tone="cyan" announce={false} />
+          : <span class="cloud-sync-indicator__dot" aria-hidden="true" />}
         <span class="cloud-sync-indicator__primary">KV</span>
       </button>
       {detailsText && (
