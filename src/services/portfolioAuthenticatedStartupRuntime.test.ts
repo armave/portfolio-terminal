@@ -11,7 +11,10 @@ function createFixture(role: AuthenticatedStartupRole = 'admin', secret = 'valid
   const dependencies: PortfolioAuthenticatedStartupDependencies = {
     beginWorkspaceActivation: vi.fn(() => calls.push('begin-workspace-activation')),
     loadBrokerRules: vi.fn(() => calls.push('load-rules')),
-    publishCurrentUser: vi.fn(async () => { calls.push('publish-user'); }),
+    publishCurrentUser: vi.fn(async () => {
+      calls.push('publish-user');
+      return currentRole ? { role: currentRole } : null;
+    }),
     clearAccountIdentity: vi.fn(() => { calls.push('clear-identity'); currentRole = null; }),
     initializeOfflineHistoryStorage: vi.fn(async () => { calls.push('initialize-offline-history'); }),
     setGatewaySecret: vi.fn((value) => calls.push(`secret:${value}`)),
@@ -73,6 +76,19 @@ describe('portfolio authenticated startup runtime', () => {
     });
     expect(fixture.calls.indexOf('hide-loading')).toBeLessThan(fixture.calls.indexOf('pull-shared-cloud'));
     expect(fixture.calls.indexOf('hide-loading')).toBeLessThan(fixture.calls.indexOf('refresh-quotes'));
+  });
+
+  it('does not fall back to offline startup when a validated account cannot be activated', async () => {
+    const fixture = createFixture(null);
+
+    await expect(fixture.start()).rejects.toThrow(
+      'The authenticated account could not be activated. Please retry sign-in.'
+    );
+
+    expect(fixture.dependencies.initializeOfflineHistoryStorage).not.toHaveBeenCalled();
+    expect(fixture.dependencies.loadBrokerRules).not.toHaveBeenCalled();
+    expect(fixture.dependencies.importSavedAdminWorkspace).not.toHaveBeenCalled();
+    expect(fixture.dependencies.hideStartupLoading).not.toHaveBeenCalled();
   });
 
   it('re-arms cloud-write suppression before every workspace activation', async () => {

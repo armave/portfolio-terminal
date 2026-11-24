@@ -713,6 +713,7 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   "Sign in with the account created by an administrator.": "Войдите с учётной записью, созданной администратором.",
   "Could not connect to the authentication service.": "Не удалось подключиться к службе аутентификации.",
   "The account was created, but this device could not establish its session.": "Учётная запись создана, но на этом устройстве не удалось открыть сессию.",
+  "The authenticated account could not be activated. Please retry sign-in.": "Не удалось активировать учётную запись. Повторите вход.",
   "Loading portfolio…": "Загрузка портфеля…",
   "Create admin account": "Создать учётную запись администратора",
   "Sign in": "Войти",

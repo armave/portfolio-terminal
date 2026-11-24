@@ -1998,7 +1998,7 @@ const portfolioSessionRuntime = createPortfolioSessionRuntime({
       ).data,
       cashflows: normalizeSavedFreedomCashflows(history.cashflows)
     };
-    if (!portfolioStore.replaceWorkspace(workspace)) {
+    if (!portfolioStore.replaceWorkspace(workspace, false)) {
       throw new Error('The authenticated portfolio workspace could not be loaded safely.');
     }
     state = portfolioStore.getState();
@@ -2092,7 +2092,9 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
     }
   },
   importSavedAdminWorkspace: () => {
-    portfolioStore.importState(loadSavedState(portfolioStore.getState()));
+    // publishCurrentUser resolves only after activateWorkspaceStorage has
+    // already loaded this owner's scoped snapshot and history. Do not re-read
+    // or re-persist the same local workspace during startup.
     state = portfolioStore.getState();
   },
   applyOvernightRollover,

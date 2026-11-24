@@ -25,7 +25,7 @@ type AuthRole = AuthUser['role'];
 
 function createFixture(options: {
   initialized?: boolean;
-  user?: AuthUser;
+  user?: AuthUser | null;
   valid?: boolean;
   persisted?: boolean;
   startApp?: () => Promise<void>;
@@ -33,7 +33,7 @@ function createFixture(options: {
   let role: AuthRole | null = null;
   let initialized = options.initialized ?? false;
   const calls: string[] = [];
-  const user = options.user ?? guestUser;
+  const user = options.user === undefined ? guestUser : options.user;
   const dependencies = {
     validateGatewaySecret: vi.fn(async (secret: string) => {
       calls.push(`validate:${secret}`);
@@ -41,6 +41,10 @@ function createFixture(options: {
     }),
     saveGatewaySecret: vi.fn((secret: string) => calls.push(`save:${secret}`)),
     publishCurrentUser: vi.fn(async () => {
+      if (!user) {
+        calls.push('publish:null');
+        return null;
+      }
       role = user.role;
       calls.push(`publish:${user.role}`);
       return user;
@@ -108,6 +112,19 @@ describe('portfolio authentication runtime', () => {
     expect(fixture.dependencies.validateGatewaySecret).toHaveBeenCalledWith('bad-token');
     expect(fixture.dependencies.saveGatewaySecret).not.toHaveBeenCalled();
     expect(fixture.dependencies.publishCurrentUser).not.toHaveBeenCalled();
+    expect(fixture.dependencies.persistGatewaySecret).not.toHaveBeenCalled();
+    expect(fixture.dependencies.hideAuthContainer).not.toHaveBeenCalled();
+  });
+
+  it('keeps authentication visible when a validated account workspace cannot be activated', async () => {
+    const fixture = createFixture({ user: null });
+    const runtime = createPortfolioAuthenticationRuntime(fixture.dependencies);
+
+    await expect(runtime.handleSaveGatewaySecret('session-token')).rejects.toThrow(
+      'The authenticated account could not be activated. Please retry sign-in.'
+    );
+
+    expect(fixture.dependencies.completeWorkspaceSync).toHaveBeenCalledTimes(1);
     expect(fixture.dependencies.persistGatewaySecret).not.toHaveBeenCalled();
     expect(fixture.dependencies.hideAuthContainer).not.toHaveBeenCalled();
   });
