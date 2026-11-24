@@ -102,7 +102,10 @@ describe('storage service', () => {
       } as unknown as IDBFactory);
 
       const activation = activatePortfolioStorageScope('owner', { migrateLegacy: true });
-      await vi.advanceTimersByTimeAsync(6_000);
+      // Scope activation bounds the owner-state preflight, legacy-history
+      // preflight, portfolio-recovery migration, and closed-history hydration.
+      // Each IndexedDB open has its own two-second deadline.
+      await vi.advanceTimersByTimeAsync(10_000);
       await expect(activation).resolves.toBeUndefined();
 
       expect(storageMap.get('portfolio_session_storage_v1')).toBe('1');
