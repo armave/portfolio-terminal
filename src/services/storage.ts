@@ -239,7 +239,7 @@ async function readPortfolioStateRecoveryRecordsFromIndexedDB(
 ): Promise<{ current: Record<string, unknown> | null; recovery: Record<string, unknown> | null }> {
   const db = await openHistoryDatabase(scope);
   try {
-    return await new Promise((resolve, reject) => {
+    return await new Promise<{ current: Record<string, unknown> | null; recovery: Record<string, unknown> | null }>((resolve, reject) => {
       const transaction = db.transaction(HISTORY_OBJECT_STORE, 'readonly');
       const store = transaction.objectStore(HISTORY_OBJECT_STORE);
       const currentRequest = store.get(PORTFOLIO_STATE_RECORD_KEY);
@@ -398,7 +398,7 @@ export function initializePortfolioStateRecoveryStorage(
       try {
         localCurrent = parseJsonRecord(storage.getItem(canonicalKey));
         localRecovery = parseJsonRecord(storage.getItem(recoveryKey));
-        if (!localCurrent) {
+        if (!localCurrent && !localRecovery) {
           localCurrent = parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_LEGACY_STATE, scope)));
         }
       } catch (error) {
@@ -434,7 +434,7 @@ export function initializePortfolioStateRecoveryStorage(
     const resetRecovery = isExplicitPortfolioReset(current);
     const recovery = resetRecovery
       ? current
-      : localRecovery ?? indexed.recovery ?? indexed.current ?? current;
+      : localRecovery ?? indexed.current ?? indexed.recovery ?? current;
     try {
       await writePortfolioStateRecoveryRecordsToIndexedDB(current, recovery, scope, resetRecovery);
     } catch (error) {
@@ -485,6 +485,7 @@ export async function flushPortfolioStateRecoveryPersistence(): Promise<boolean>
 
 /** Clear only the portfolio recovery rows; the separate closed-history rows remain intact. */
 export async function clearPortfolioStateRecoveryPersistence(scope = activePortfolioStorageScope): Promise<void> {
+  portfolioStateSnapshotCacheByScope.delete(scope);
   await (portfolioStateRecoveryWriteQueuesByScope.get(scope) ?? Promise.resolve(true)).catch(() => false);
   try {
     const db = await openHistoryDatabase(scope);
@@ -1333,8 +1334,7 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
     // can never inspect the owner's legacy or recovery records.
     const candidates = [
       canonicalKey,
-      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY),
-      scopedStorageKey(STORAGE_KEY_LEGACY_STATE)
+      scopedStorageKey(STORAGE_KEY_STATE_RECOVERY)
     ];
     for (const key of candidates) {
       let raw: string | null;
@@ -1378,7 +1378,10 @@ export function loadSavedState<T extends Record<string, any>>(fallback: T): T {
     }
 
     const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
-    return cached ? { ...fallback, ...cached } : fallback;
+    if (cached) return { ...fallback, ...cached };
+    const legacy = parseJsonRecord(storage.getItem(scopedStorageKey(STORAGE_KEY_LEGACY_STATE)));
+    if (legacy) return { ...fallback, ...legacy };
+    return fallback;
   } catch (err) {
     logSafeDiagnostic('warn', 'browser-storage', err);
     const cached = portfolioStateSnapshotCacheByScope.get(activePortfolioStorageScope);
