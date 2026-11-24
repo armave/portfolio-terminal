@@ -35,7 +35,7 @@ The PT-17 changes extend this baseline by:
 - keeping the general CI browser journey focused on the app shell/operations surface while ensuring financial, persistence, and authorization regressions remain part of the single complete Vitest run;
 - recording the candidate commit, source PR head/base where applicable, workflow run, and each validation step's outcome in the GitHub Actions run summary;
 - collecting repeatable desktop/mobile browser-shell performance samples as a CI artifact;
-- running the path-filtered Financial Integrity Regression workflow on PRs and merged commits targeting `dev` and `main` when its high-risk paths change.
+- retaining the focused Financial Integrity Regression workflow for manual dispatch; automatic PR/push validation covers its financial, persistence, and Worker/authentication test subset in the full Vitest run.
 
 These automated journeys use deterministic mocked API responses. They do not prove authenticated production TradeNet behavior or live Market Depth behavior.
 
