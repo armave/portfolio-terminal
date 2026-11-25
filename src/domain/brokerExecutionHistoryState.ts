@@ -48,11 +48,13 @@ export function brokerExecutionHistoryReducer<T>(
       return next;
     }
     case 'success':
-      // Live-stream and background broker updates may improve the visible
-      // snapshot, but cannot finish a different user-requested refresh.
-      if (state.activeRequestId && action.requestId !== state.activeRequestId) {
+      // An unowned live/background update may improve visible rows but cannot
+      // settle a foreground refresh. A late completion from a superseded
+      // foreground request is ignored so it cannot replace newer request data.
+      if (state.activeRequestId && !action.requestId) {
         return { ...state, trades: [...action.trades] };
       }
+      if (state.activeRequestId && action.requestId !== state.activeRequestId) return state;
       return {
         trades: [...action.trades],
         status: 'ready'

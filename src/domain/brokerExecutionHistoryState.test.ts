@@ -143,7 +143,7 @@ describe('broker execution history view state', () => {
     expect(late).toMatchObject({
       status: 'refreshing',
       activeRequestId: 'manual-new',
-      trades: [{ id: 'old-result' }]
+      trades: [{ id: 'cached-sell' }]
     });
     expect(brokerExecutionHistoryReducer(late, {
       type: 'success',

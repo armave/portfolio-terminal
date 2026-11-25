@@ -45,17 +45,18 @@ export function subscribeToPortfolioSelector<T>(
 ): () => void {
   let current!: T;
   let pending!: T;
-  let hasPending = false;
+  let notificationVersion = 0;
   let initializing = true;
 
-  // Register first, then read the initial state. Any synchronous update delivered
-  // during registration is held until the initial value is selected, closing the
-  // read-before-subscribe gap without publishing an intermediate stale selection.
+  // Register first, then read the initial state. Notifications delivered during
+  // the read are held until the snapshot is selected, closing the lost-update
+  // window without allowing a synchronous subscription replay to replace a newer
+  // getState() value.
   const unsubscribe = store.subscribe((state) => {
     const next = selector(state);
+    notificationVersion += 1;
     if (initializing) {
       pending = next;
-      hasPending = true;
       return;
     }
     if (isEqual(current, next)) return;
@@ -64,8 +65,9 @@ export function subscribeToPortfolioSelector<T>(
   });
 
   try {
+    const versionBeforeRead = notificationVersion;
     const initial = selector(store.getState());
-    current = hasPending ? pending : initial;
+    current = notificationVersion > versionBeforeRead ? pending : initial;
     initializing = false;
     listener(current);
   } catch (error) {
