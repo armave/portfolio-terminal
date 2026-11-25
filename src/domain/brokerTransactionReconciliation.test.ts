@@ -1348,4 +1348,20 @@ describe('legacy closed-sale reconciliation fallback', () => {
     expect(report.findings).toEqual([]);
   });
 
+
+  it('rejects boolean broker cashflow amounts instead of normalizing them to zero', () => {
+    const malformed = cashflow({ type: 'Dividend', amount: false as unknown as number });
+    const report = reconcile([], [], { brokerCashflows: [malformed] });
+
+    expect(report.findings).toContainEqual(expect.objectContaining({
+      type: 'cashflow_unclassified',
+      brokerReferences: ['cashflow-1'],
+      confidence: 'provisional'
+    }));
+    expect(report.findings).not.toContainEqual(expect.objectContaining({
+      type: 'cashflow_missing_in_app',
+      brokerValue: 0
+    }));
+  });
+
 });

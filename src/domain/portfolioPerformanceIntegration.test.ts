@@ -559,4 +559,23 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(report.incomeCosts?.reason).toContain('ambiguous');
   });
 
+
+  it.each([null, '', ' ', false])(
+    'does not coerce malformed broker income/cost amount %s to zero',
+    (amount) => {
+      const report = buildPortfolioPerformanceReport({
+        performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+        transactionEvents: [],
+        cashflows: [{
+          id: 'freedom-invalid-dividend', date: new Date(BASE + DAY / 2).toISOString(),
+          type: 'Dividend', amount: amount as unknown as number, currency: 'USD',
+          description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+        }]
+      } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+      expect(report.incomeCosts?.status).toBe('unavailable');
+      expect(report.incomeCosts?.reason).toContain('invalid amount');
+    }
+  );
+
 });
