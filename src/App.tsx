@@ -505,6 +505,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               {permissions.isAdmin && activeDeskView === 'COMBINED' && (
                 <Suspense fallback={<DeskLoading title={translateText('Preparing portfolio health', getAppLanguage())} message={translateText('Loading source status…', getAppLanguage())} accent="cyan" />}>
                   <PortfolioHealthCenter
+                    key={`portfolio-health-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
                     accountId={currentUser?.id || ''}
                     cloudStatus={cloudStatus}
                     cloudSyncStatus={cloudSyncStatus}

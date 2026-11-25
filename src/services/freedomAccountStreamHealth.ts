@@ -36,7 +36,7 @@ function notifyHealthListeners(): void {
   healthListeners.forEach((listener) => listener(state.sessionKey));
 }
 
-/** Subscribe to in-memory stream health changes; no account data is included in the notification. */
+/** Subscribe to in-memory stream health changes; notifications carry the session key, not broker or portfolio payloads. */
 export function subscribeFreedomAccountStreamHealth(listener: (sessionKey: string) => void): () => void {
   healthListeners.add(listener);
   listener(state.sessionKey);

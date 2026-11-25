@@ -25,6 +25,11 @@ describe('Portfolio Health Center', () => {
     expect(resolveTradeHistoryHealthState(null, 0)).toBe('unknown');
   });
 
+  it('remounts on account session-generation changes to prevent prior-session status flashes', () => {
+    const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+    expect(app).toContain('key={`portfolio-health-${accountSession?.identity ?? \'none\'}-${accountSession?.generation ?? -1}`}');
+  });
+
   it('keeps the four source cards and read-only reconciliation entry in the Combined workspace', () => {
     const source = readSource();
     for (const label of [
