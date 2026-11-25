@@ -70,7 +70,7 @@ describe('app localization', () => {
       'The last confirmed cloud save is retained after a sync error.',
       'No confirmed cloud save yet.', 'Broker reconciliation',
       'Compare broker executions, cashflows and quote evidence with app journal records. The review is read-only.',
-      'Review broker activity', 'Hide reconciliation', 'Open reconciliation'
+      'Review broker activity', 'Reconcile broker activity', 'Hide reconciliation', 'Open reconciliation'
     ];
     for (const copy of healthCopy) expect(translateText(copy, 'ru'), copy).not.toBe(copy);
   });

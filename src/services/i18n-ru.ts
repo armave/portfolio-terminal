@@ -1,5 +1,6 @@
 /** Russian static UI copy. Dynamic values are translated by i18n.ts. */
 export const RU_TRANSLATIONS: Record<string, string> = {
+  'Reconcile broker activity': 'Сверить активность брокера',
   "Portfolio health": "Состояние портфеля",
   "Source connectivity and confirmed update times. Quote quality and cloud synchronization are reported separately.": "Подключение к источникам и подтверждённое время обновления. Качество котировок и синхронизация облака показываются отдельно.",
   "TradeNet account stream": "Поток счёта TradeNet",
