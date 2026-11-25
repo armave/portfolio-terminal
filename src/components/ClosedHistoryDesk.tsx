@@ -228,7 +228,7 @@ function ClosedTradeAllocationControls({
   );
 }
 
-export function ClosedHistoryDesk({ accountId, canPostCashActivity = false, canViewCashActivity = false, isSessionCurrent = () => true, isWorkspaceSyncReady }: { accountId: string; canPostCashActivity?: boolean; canViewCashActivity?: boolean; isSessionCurrent?: () => boolean; isWorkspaceSyncReady: boolean }) {
+export function ClosedHistoryDesk({ accountId, canViewCashActivity = false, isSessionCurrent = () => true, isWorkspaceSyncReady }: { accountId: string; canViewCashActivity?: boolean; isSessionCurrent?: () => boolean; isWorkspaceSyncReady: boolean }) {
   const state = usePortfolioSelector(selectTradesPortfolioState, areTradesPortfolioStatesEqual);
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTrade>,
@@ -940,7 +940,7 @@ export function ClosedHistoryDesk({ accountId, canPostCashActivity = false, canV
       />
         </>
       ) : (
-        <CashActivityLedger accountId={accountId} canPostCashActivity={canPostCashActivity} isSessionCurrent={isSessionCurrent} />
+        <CashActivityLedger />
       )}
     </section>
   );
