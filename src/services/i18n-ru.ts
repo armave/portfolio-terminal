@@ -26,7 +26,6 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Filtered verified outflows · USD': 'Подтверждённые списания по фильтрам · USD',
   'Filtered net USD movement': 'Чистое движение USD по фильтрам',
   'Total records': 'Всего записей',
-  'Source': 'Источник',
   'All qualities': 'Все уровни качества',
   'Verified': 'Подтверждено',
   'Historical manual entry · unverified': 'Историческая ручная запись · не подтверждена',
