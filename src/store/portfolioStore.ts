@@ -21,7 +21,6 @@ import type {
   PortfolioTransactionContext,
   PortfolioTransactionDraft,
   PortfolioTransactionEvent,
-  CashflowCategory,
   PortfolioCorporateActionLotAdjustment
 } from '../types/portfolioTransaction';
 import {
@@ -63,7 +62,6 @@ import type { PortfolioSnapshotOptions } from '../services/storage';
 import { calculateCommission, normalizePortfolioTranche, resolveCommissionConfig } from '../domain/portfolio';
 import { validateSaleCostBasisTranches } from '../domain/saleCostBasis';
 import { allocateFifoSaleTranches, buildSaleLotJournalAllocations, calculateSaleAccounting, calculateSaleCommission, createClosedTradeRecord, resolveClosedTradeTimestamp, settleSaleProceeds } from '../domain/portfolioTransactions';
-import { getTotalPortfolioInvested } from '../domain/portfolioSelectors';
 import { createBlankPortfolioState } from './portfolioDefaults';
 import { migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
 export { migrateLegacyCloudHoldingsToPositions, migrateLegacyHoldingsToPositions, buildHoldingsProjection } from './portfolioMigrations';
