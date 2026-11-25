@@ -2,7 +2,7 @@
 
 ## Status
 
-**Production release verified — 2026-11-24.** The Cash Activity feature was merged through [PR #720](https://github.com/armave/portfolio-terminal/pull/720) to `dev`, then promoted through [PR #721](https://github.com/armave/portfolio-terminal/pull/721) to `main`. Production `main` is at `2cad42ae551ff192d34e409258b1d0baa1e25698`. The same-run GitHub Pages artifact passed provenance validation, same-commit security validation, deployment and the published-site HTTP smoke check at [the production app](https://armave.github.io/portfolio-terminal/).
+**Previous version production release verified — 2026-11-24.** The earlier Cash Activity version was merged through [PR #720](https://github.com/armave/portfolio-terminal/pull/720) to `dev`, then promoted through [PR #721](https://github.com/armave/portfolio-terminal/pull/721) to `main`. Production `main` was at `2cad42ae551ff192d34e409258b1d0baa1e25698`; its same-run GitHub Pages artifact passed provenance validation, same-commit security validation, deployment and published-site HTTP smoke checks. The read-only revision described below is a separate client change and is not production-verified until its own PR checks and promotion complete.
 
 This confirms the application release path and published shell. CI browser journeys use deterministic fixtures; it does not certify live authenticated TradeNet behavior, live Market Depth, or broker-side transaction submission.
 
