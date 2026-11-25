@@ -24,6 +24,7 @@ interface CashActivityRow {
   amount: number | null;
   currency?: string;
   signedCash: number | null;
+  signedDebt?: number | null;
   source: 'TradeNet' | 'App';
   quality: 'verified' | 'provisional' | 'unclassified';
   debtOnly?: boolean;
@@ -64,7 +65,8 @@ function categoryFromEvent(event: PortfolioTransactionEvent): CashflowCategory {
     case 'margin.interest': return 'margin_interest';
     case 'fee': return 'fee';
     case 'cash.transfer': return 'transfer';
-    case 'cash.adjustment': return 'adjustment';
+    case 'cash.adjustment':
+    case 'margin.adjustment': return 'adjustment';
     case 'corporate-action': return 'corporate_action';
     default: return 'unclassified';
   }
@@ -141,7 +143,7 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
   }
 
   const displayableTypes = new Set<PortfolioTransactionEvent['type']>([
-    'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'cash.adjustment',
+    'cash.deposit', 'cash.withdrawal', 'cash.transfer', 'cash.adjustment', 'margin.adjustment',
     'dividend', 'interest.income', 'fee', 'margin.interest', 'corporate-action'
   ]);
   for (const event of snapshot.transactionEvents || []) {
@@ -154,6 +156,9 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
     const signedCash = typeof event.cashDelta === 'number' && Number.isFinite(event.cashDelta)
       ? event.cashDelta
       : event.type === 'margin.interest' ? 0 : null;
+    const signedDebt = typeof event.marginDebtDelta === 'number' && Number.isFinite(event.marginDebtDelta)
+      ? event.marginDebtDelta
+      : event.type === 'margin.interest' && amount !== null ? amount : null;
     const eventCurrency = typeof event.currency === 'string' && /^[A-Z]{3}$/i.test(event.currency.trim())
       ? event.currency.trim().toUpperCase()
       : undefined;
@@ -165,6 +170,7 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
       amount,
       currency: eventCurrency,
       signedCash,
+      signedDebt,
       source: 'App',
       legacyManual: event.source === 'manual-cash-activity' ||
         event.source === 'manual-cash-adjustment' ||
@@ -174,7 +180,7 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
         event.source === 'manual-margin-adjustment' || !eventCurrency
         ? 'provisional'
         : 'verified',
-      debtOnly: event.type === 'margin.interest' && signedCash === 0
+      debtOnly: (event.type === 'margin.interest' && signedCash === 0) || event.type === 'margin.adjustment'
     });
   }
 
@@ -231,7 +237,7 @@ export function CashActivityLedger() {
     pagination.setPage(1);
   };
 
-  const usdRows = filteredRows.filter(row => row.quality === 'verified' && row.currency === 'USD' && row.signedCash !== null);
+  const usdRows = filteredRows.filter(row => row.quality === 'verified' && row.currency === 'USD' && !row.debtOnly && row.signedCash !== null);
   const knownInflows = usdRows.reduce((sum, row) => sum + Math.max(0, row.signedCash || 0), 0);
   const knownOutflows = usdRows.reduce((sum, row) => sum + Math.max(0, -(row.signedCash || 0)), 0);
   const marginInterest = filteredRows
@@ -239,7 +245,8 @@ export function CashActivityLedger() {
     .reduce((sum, row) => sum + (row.debtOnly ? (row.amount || 0) : -(row.signedCash || 0)), 0);
   const otherCurrencyCount = filteredRows.filter(row => row.currency && row.currency !== 'USD').length;
   const unknownCount = filteredRows.filter(row =>
-    row.quality !== 'verified' || row.amount === null || !row.currency || row.timestamp === null || row.signedCash === null
+    row.quality !== 'verified' || row.amount === null || !row.currency || row.timestamp === null ||
+      (row.debtOnly ? row.signedDebt === null : row.signedCash === null)
   ).length;
   const currentCash = typeof snapshot.cashCushion?.freeCash === 'number' &&
     Number.isFinite(snapshot.cashCushion.freeCash) ? snapshot.cashCushion.freeCash : null;
@@ -362,7 +369,7 @@ export function CashActivityLedger() {
                 <tbody id="cashActivityTable" class="divide-y divide-slate-800/80 bg-slate-950/40">
                   {visibleRows.map(row => {
                     const signedDisplay = row.debtOnly
-                      ? (row.amount === null ? null : -row.amount)
+                      ? (row.signedDebt === null || row.signedDebt === undefined ? null : -row.signedDebt)
                       : row.signedCash;
                     const isInflow = signedDisplay !== null && signedDisplay >= 0;
                     const amountTone = signedDisplay === null
