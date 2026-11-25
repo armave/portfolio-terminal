@@ -690,20 +690,6 @@ function mergeLiveQuoteDetails(
   };
 }
 
-export type ManualCashActivityCategory =
-  | 'deposit' | 'withdrawal' | 'dividend' | 'interest_income'
-  | 'commission' | 'fee' | 'tax' | 'margin_interest' | 'transfer';
-
-export interface ManualCashActivityInput {
-  category: ManualCashActivityCategory;
-  amount: number;
-  currency: string;
-  effectiveAt: number;
-  note: string;
-  idempotencyKey: string;
-  direction?: 'in' | 'out';
-}
-
 export class PortfolioStore {
   private state: PortfolioState;
   private readonly committedSnapshots = new WeakSet<PortfolioState>();
@@ -1595,91 +1581,6 @@ export class PortfolioStore {
     });
   }
 
-  /**
-   * Record a user-owned cash activity and the corresponding canonical USD cash/debt
-   * movement in one persisted journal/store commit. Broker imports never call this.
-   * Cash outflows are rejected when free cash is insufficient; they never create
-   * margin borrowing implicitly. Capitalized margin interest is an explicit choice.
-   */
-  public postCashActivity(input: ManualCashActivityInput): boolean {
-    if (!input || !Number.isFinite(input.amount) || input.amount <= 0 ||
-      input.currency?.trim().toUpperCase() !== 'USD' ||
-      !Number.isFinite(input.effectiveAt) || input.effectiveAt <= 0 ||
-      typeof input.note !== 'string' || input.note.trim().length > 240 ||
-      typeof input.idempotencyKey !== 'string' || !input.idempotencyKey.trim()) return false;
-
-    const category: CashflowCategory = input.category;
-    const isCapitalizedInterest = category === 'margin_interest';
-    const direction = input.direction;
-    if (category === 'transfer' && direction !== 'in' && direction !== 'out') return false;
-    const incoming = ['deposit', 'dividend', 'interest_income'].includes(category) ||
-      (category === 'transfer' && direction === 'in');
-    const outgoing = ['withdrawal', 'commission', 'fee', 'tax'].includes(category) ||
-      (category === 'transfer' && direction === 'out');
-    if (!isCapitalizedInterest && !incoming && !outgoing) return false;
-
-    const cashDelta = incoming ? input.amount : outgoing ? -input.amount : 0;
-    const eventType: PortfolioTransactionEvent['type'] =
-      category === 'deposit' ? 'cash.deposit' :
-      category === 'withdrawal' ? 'cash.withdrawal' :
-      category === 'dividend' ? 'dividend' :
-      category === 'interest_income' ? 'interest.income' :
-      category === 'margin_interest' ? 'margin.interest' :
-      category === 'transfer' ? 'cash.transfer' : 'fee';
-    const note = input.note.trim();
-    const fingerprint = createMutationFingerprint([
-      'cash-activity-v1', category, input.amount, 'USD', input.effectiveAt, note, direction ?? null
-    ]);
-
-    let rejected = false;
-    const committed = this.updateFinancialMutation({
-      idempotencyKey: input.idempotencyKey,
-      requestFingerprint: fingerprint,
-      actor: { type: 'user' },
-      source: 'manual-cash-activity',
-      effectiveAt: input.effectiveAt
-    }, (state) => {
-      const rawFreeCash = state.cashCushion?.freeCash;
-      const freeCash = typeof rawFreeCash === 'number'
-        ? rawFreeCash
-        : typeof rawFreeCash === 'string' && rawFreeCash.trim() !== ''
-          ? Number(rawFreeCash)
-          : Number.NaN;
-      const signedBalance = state.balance;
-      const realizedMarginCharged = state.realizedMarginCharged;
-      if (![freeCash, signedBalance, realizedMarginCharged].every(value =>
-        typeof value === 'number' && Number.isFinite(value)) ||
-        freeCash < 0 || (isCapitalizedInterest && signedBalance > 0) || realizedMarginCharged < 0) { rejected = true; return null; }
-      const nextFreeCash = freeCash + cashDelta;
-      if (!Number.isFinite(nextFreeCash) || nextFreeCash < -1e-8) { rejected = true; return null; }
-      const normalizedFreeCash = Math.abs(nextFreeCash) < 1e-8 ? 0 : nextFreeCash;
-      const activeTickers = Object.keys(state.positions || {});
-      const recordAsRealized = activeTickers.length === 0 || getTotalPortfolioInvested(state) === 0;
-      const realizedMarginChargeDelta = isCapitalizedInterest && recordAsRealized ? input.amount : 0;
-      const nextBalance = isCapitalizedInterest ? signedBalance - input.amount : signedBalance;
-      const nextRealizedCharge = realizedMarginCharged + realizedMarginChargeDelta;
-      if (![nextBalance, nextRealizedCharge].every(Number.isFinite)) { rejected = true; return null; }
-      return {
-        state: {
-          ...state,
-          cashBalance: normalizedFreeCash,
-          cashCushion: { ...state.cashCushion, freeCash: normalizedFreeCash },
-          balance: nextBalance,
-          realizedMarginCharged: nextRealizedCharge
-        },
-        event: {
-          type: eventType, cashflowCategory: category, effectiveAt: input.effectiveAt,
-          currency: 'USD', grossAmount: input.amount, cashDelta,
-          ...(isCapitalizedInterest ? {
-            marginDebtDelta: input.amount, financingCost: input.amount,
-            realizedMarginChargeDelta
-          } : {}),
-          note: note || 'Manual cash activity.'
-        }
-      };
-    });
-    return committed && !rejected;
-  }
   /**
    * Reverse a balance-only manual adjustment without deleting its original
    * event. Trade, lot, closed-history and corporate-action reversals are
