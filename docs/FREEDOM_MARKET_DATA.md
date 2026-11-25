@@ -4,6 +4,8 @@
 
 This integration adds read-only Freedom TradeNet quote, news, and daily-history proxy actions. The authenticated q WebSocket snapshot is the primary quote source. The matching Freedom REST quote is requested only if q fails; Yahoo is requested only if both Freedom quote paths fail, followed by Finnhub/Twelve Data. Company news tries Freedom first and falls back to the existing Finnhub news endpoint. Existing fundamentals, earnings, and analyst-target sections are unchanged.
 
+The Worker provider cache shares only completed response data and cooldown timestamps. It must not store or return an in-flight provider Promise from a module-global map: Cloudflare binds asynchronous work to the incoming request, so a concurrent request can otherwise await a Promise whose originating request has ended and fail with a request-lifetime 500. Simultaneous cache misses may therefore produce separate read-only provider calls; after a result completes, later requests still benefit from the existing short-lived response cache.
+
 ## Required Cloudflare Worker secrets
 
 Configure these in the Worker environment (never in Vite/browser variables):

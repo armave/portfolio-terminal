@@ -11,9 +11,8 @@ const PROVIDER_CACHE_TTL_MS = { yahoo_quote: 8_000, freedom_quote: 5_000, finnhu
 const PROVIDER_COOLDOWN_MS = { yahoo_quote: 3_000, freedom_quote: 10_000, finnhub: 5_000, twelvedata: 5_000, finnhub_history: 15_000, finnhub_events: 15_000, finnhub_calendar: 30_000, finnhub_market_status: 5_000 };
 const providerResponseCache = new Map();
 const providerCooldowns = new Map();
-const providerInFlight = new Map();
 
-const SAFE_PROVIDER_METRIC_NAMES = new Set(["cache_hit", "inflight_dedup", "provider_cooldown", "provider_request", "provider_failure"]);
+const SAFE_PROVIDER_METRIC_NAMES = new Set(["cache_hit", "provider_cooldown", "provider_request", "provider_failure"]);
 const SAFE_PROVIDER_METRIC_PROVIDERS = new Set(["freedom_quote", "finnhub", "twelvedata", "finnhub_history", "finnhub_calendar", "finnhub_market_status", "finnhub_events", "yahoo_quote"]);
 
 function providerMetric(metric, fields = {}) {
@@ -37,37 +36,33 @@ async function withProviderCache(provider, key, fetcher) {
         providerMetric("cache_hit", { provider });
         return cached.value;
     }
-    const inFlight = providerInFlight.get(cacheKey);
-    if (inFlight) {
-        providerMetric("inflight_dedup", { provider });
-        return inFlight;
-    }
     const cooldownUntil = providerCooldowns.get(provider) || 0;
     if (cooldownUntil > now) {
         providerMetric("provider_cooldown", { provider });
         throw new Error(`${provider} provider temporarily cooling down after an upstream failure.`);
     }
+
+    // Cloudflare ties asynchronous work to the incoming request. Keep provider
+    // promises request-local: a module-global in-flight map can make another
+    // request await a promise whose owner has already ended, producing a 500.
+    // Only completed provider data and cooldown timestamps are safe to share
+    // across requests. Concurrent cache misses may issue independent read-only
+    // provider calls; subsequent requests use the completed-result cache.
     const startedAt = now;
-    const request = (async () => {
-        try {
-            const value = await fetcher();
-            providerResponseCache.set(cacheKey, { value, expiresAt: Date.now() + (PROVIDER_CACHE_TTL_MS[provider] || 5_000) });
-            if (providerResponseCache.size > 500) {
-                providerResponseCache.delete(providerResponseCache.keys().next().value);
-            }
-            providerCooldowns.delete(provider);
-            providerMetric("provider_request", { provider, durationMs: Date.now() - startedAt, success: true });
-            return value;
-        } catch (error) {
-            providerCooldowns.set(provider, Date.now() + (PROVIDER_COOLDOWN_MS[provider] || 5_000));
-            providerMetric("provider_failure", { provider, durationMs: Date.now() - startedAt });
-            throw error;
-        } finally {
-            providerInFlight.delete(cacheKey);
+    try {
+        const value = await fetcher();
+        providerResponseCache.set(cacheKey, { value, expiresAt: Date.now() + (PROVIDER_CACHE_TTL_MS[provider] || 5_000) });
+        if (providerResponseCache.size > 500) {
+            providerResponseCache.delete(providerResponseCache.keys().next().value);
         }
-    })();
-    providerInFlight.set(cacheKey, request);
-    return request;
+        providerCooldowns.delete(provider);
+        providerMetric("provider_request", { provider, durationMs: Date.now() - startedAt, success: true });
+        return value;
+    } catch (error) {
+        providerCooldowns.set(provider, Date.now() + (PROVIDER_COOLDOWN_MS[provider] || 5_000));
+        providerMetric("provider_failure", { provider, durationMs: Date.now() - startedAt });
+        throw error;
+    }
 }
 
 const ALLOWED_GEMINI_MODELS = new Set([
