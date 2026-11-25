@@ -151,7 +151,8 @@ function ticker(value: unknown): string {
   return text(value).toUpperCase().replace(/\.US$/i, '');
 }
 function number(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const result = Number(value);
   return Number.isFinite(result) ? result : null;
 }

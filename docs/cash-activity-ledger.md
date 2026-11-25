@@ -67,7 +67,7 @@ Credited interest is shown separately from margin interest. For margin-interest 
 ## Data quality and limitations
 
 - Unknown classifications remain visible and are excluded from verified totals.
-- Missing/invalid amounts, currencies, dates and provisional source identities remain visible and are excluded from verified USD summary values.
+- Missing/null, blank, boolean or malformed amounts, currencies, dates and provisional source identities remain visible and are excluded from verified USD summary values. Performance income/cost reporting and reconciliation also reject malformed amount fields instead of coercing them to numeric zero.
 - Foreign-currency rows are displayed but excluded from USD totals; the UI does not convert currencies.
 - Current available cash and margin debt are shown from canonical state, not reconstructed from broker rows.
 - The feature does not edit open positions, closed-trade cost basis, lots, commissions allocated to past trades, or broker records.

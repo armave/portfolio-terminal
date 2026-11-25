@@ -23,7 +23,8 @@ const CASH_ITEM_KEY = 'cash';
 const MARGIN_DEBT_ITEM_KEY = 'margin-debt';
 
 function finiteNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -410,9 +411,9 @@ function mapIncomeCostAdjustments(
       default:
         return null;
     }
-    const amount = Number(amountValue);
+    const amount = finiteNumber(amountValue);
     const rowCurrency = currencyCode(sourceCurrency);
-    if (!Number.isFinite(amount) || rowCurrency !== currency) {
+    if (amount === null || rowCurrency !== currency) {
       return 'An income or cost cashflow has an invalid amount or a different/unknown currency.';
     }
     adjustments.push({ timestamp, type, amount: Math.abs(amount), currency, quality, ...(refund ? { refund: true } : {}) });
@@ -433,7 +434,11 @@ function mapIncomeCostAdjustments(
     if (!supportedCategories.has(classification.category)) continue;
 
     const classificationText = [row.type, row.description, ...Object.values(row.raw || {})].filter(Boolean).join(' ');
-    const signedAmount = normalizeClassifiedCashflowAmount(classification.category, Number(row.amount), classificationText);
+    const rowAmount = finiteNumber(row.amount);
+    if (rowAmount === null) {
+      return { reason: 'An income or cost cashflow has an invalid amount.', warnings: [] };
+    }
+    const signedAmount = normalizeClassifiedCashflowAmount(classification.category, rowAmount, classificationText);
     const sourceCurrency = currencyCode(row.currency);
     const rowId = typeof row.id === 'string' ? row.id.trim() : '';
     const fallbackIdentity = row.identityQuality === 'fallback' ||
