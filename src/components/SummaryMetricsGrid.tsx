@@ -1275,9 +1275,6 @@ function SummaryMetricsGridView({ isAdmin }: { isAdmin: boolean }) {
             ticker={pos.ticker}
             tranches={positionTranches}
             quantities={trancheQuantities}
-            positionShares={pos.shares}
-            totalInvested={totalInvested}
-            averageEntry={avgPrice}
             restoreFocusRef={trancheButtonRef}
             onClose={() => setTrancheModalOpen(false)}
           />
