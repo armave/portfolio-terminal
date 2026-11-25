@@ -1333,4 +1333,19 @@ describe('legacy closed-sale reconciliation fallback', () => {
     expect(report.matchedLegacyClosedSaleCount).toBe(0);
     expect(report.matchedLegacyExecutionCount).toBe(0);
   });
+
+  it('matches manually capitalized margin interest using financing cost instead of zero cash movement', () => {
+    const providerMarginFee = cashflow({ id: 'provider-manual-margin-fee', type: 'Margin Fee', amount: -25 });
+    const manualInterest = createPortfolioTransactionEvent({
+      type: 'margin.interest', cashflowCategory: 'margin_interest',
+      effectiveAt: at, currency: 'USD', grossAmount: 25, cashDelta: 0,
+      marginDebtDelta: 25, financingCost: 25, realizedMarginChargeDelta: 0
+    }, { actor: { type: 'user', id: 'investor-1' }, source: 'manual-cash-activity',
+      eventId: 'app-manual-margin-interest', recordedAt: at });
+
+    const report = reconcile([], [manualInterest], { brokerCashflows: [providerMarginFee] });
+    expect(report.matchedCashflowCount).toBe(1);
+    expect(report.findings).toEqual([]);
+  });
+
 });

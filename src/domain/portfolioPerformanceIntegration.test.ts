@@ -471,4 +471,92 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(mixed.status).toBe('unavailable');
     expect(mixed.reason).toContain('different or unknown currency');
   });
+
+  it('counts one broker income row when the same dividend was already posted manually', () => {
+    const timestamp = BASE + DAY / 2;
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+      transactionEvents: [{
+        id: 'manual-dividend-1', schemaVersion: 1, type: 'dividend',
+        cashflowCategory: 'dividend', actor: { type: 'user' }, source: 'manual-cash-activity',
+        effectiveAt: timestamp, recordedAt: timestamp, currency: 'USD',
+        grossAmount: 5, cashDelta: 5
+      }],
+      cashflows: [{
+        id: 'freedom-dividend-1', date: new Date(timestamp).toISOString(),
+        type: 'Dividend', amount: 5, currency: 'USD',
+        description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+      }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts?.status).toBe('available');
+    if (report.incomeCosts && report.incomeCosts.status !== 'unavailable') {
+      expect(report.incomeCosts.value.dividends).toBe(5);
+    }
+  });
+
+  it('counts an identical stable broker cashflow ID only once', () => {
+    const timestamp = BASE + DAY / 2;
+    const row = {
+      id: 'freedom-dividend-duplicate', date: new Date(timestamp).toISOString(),
+      type: 'Dividend', amount: 5, currency: 'USD',
+      description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+    };
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+      transactionEvents: [],
+      cashflows: [row, { ...row }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts?.status).toBe('available');
+    if (report.incomeCosts && report.incomeCosts.status !== 'unavailable') {
+      expect(report.incomeCosts.value.dividends).toBe(5);
+    }
+  });
+
+  it('withholds income and cost totals when one stable broker cashflow ID has conflicting facts', () => {
+    const timestamp = BASE + DAY / 2;
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+      transactionEvents: [],
+      cashflows: [
+        {
+          id: 'freedom-dividend-conflict', date: new Date(timestamp).toISOString(),
+          type: 'Dividend', amount: 5, currency: 'USD',
+          description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+        },
+        {
+          id: 'freedom-dividend-conflict', date: new Date(timestamp).toISOString(),
+          type: 'Dividend', amount: 6, currency: 'USD',
+          description: 'Corrected quarterly dividend', raw: { operation_type: 'Dividend' }
+        }
+      ]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts?.status).toBe('unavailable');
+    expect(report.incomeCosts?.reason).toContain('conflicting facts');
+  });
+
+  it('withholds income and cost totals when a broker row ambiguously matches multiple manual postings', () => {
+    const timestamp = BASE + DAY / 2;
+    const manualDividend = (id: string) => ({
+      id, schemaVersion: 1, type: 'dividend' as const,
+      cashflowCategory: 'dividend' as const, actor: { type: 'user' as const },
+      source: 'manual-cash-activity', effectiveAt: timestamp, recordedAt: timestamp,
+      currency: 'USD', grossAmount: 5, cashDelta: 5
+    });
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+      transactionEvents: [manualDividend('manual-dividend-a'), manualDividend('manual-dividend-b')],
+      cashflows: [{
+        id: 'freedom-dividend-ambiguous', date: new Date(timestamp).toISOString(),
+        type: 'Dividend', amount: 5, currency: 'USD',
+        description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+      }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts?.status).toBe('unavailable');
+    expect(report.incomeCosts?.reason).toContain('ambiguous');
+  });
+
 });
