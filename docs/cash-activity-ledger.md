@@ -50,7 +50,7 @@ Provider IDs are preferred. Rows without a provider operation ID get a determini
 
 ## Read-only history and legacy data
 
-The former `PortfolioStore.postCashActivity` command and its entry form have been removed. New cash activity can enter this ledger only through broker history or existing system-owned journal events. Broker imports remain evidence-only: normalized source rows and broker-authored journal copies do not mutate `cashCushion.freeCash` or signed `balance`.
+The former `PortfolioStore.postCashActivity` command and its entry form have been removed; the ledger is not a write surface. Broker cashflow rows are supplied by broker history. App rows reflect portfolio/account journal events produced elsewhere in the application; the Cash Activity view cannot create or alter them. Separate internal account-balance setter commands are not exposed as Cash Activity controls. Any user-authored cash or margin adjustment events they produce remain visible as provisional history and are excluded from verified USD flow totals. Broker imports remain evidence-only: normalized source rows and broker-authored journal copies do not mutate `cashCushion.freeCash` or signed `balance`.
 
 Persisted transaction events are not migrated or deleted. Earlier `manual-cash-activity` rows, along with older manual cash/margin adjustment events, remain visible as app-sourced historical records and are marked provisional. They are excluded from verified USD cashflow totals so user-entered historical data is not presented as broker-verified activity. Current balances are not automatically reversed or recomputed from these historical rows.
 
