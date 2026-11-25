@@ -626,7 +626,6 @@ export function App({ onSaveGatewaySecret }: AppProps) {
               <ClosedHistoryDesk
                 key={`closed-history-${accountSession?.identity ?? 'none'}-${accountSession?.generation ?? -1}`}
                 accountId={currentUser?.id || ''}
-                canPostCashActivity={currentUser?.role === 'admin'}
                 canViewCashActivity={currentUser?.role === 'admin'}
                 isSessionCurrent={isAccountSessionCurrent}
                 isWorkspaceSyncReady={workspaceSyncReady}
