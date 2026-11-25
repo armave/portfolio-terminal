@@ -572,7 +572,7 @@ describe('buildPortfolioPerformanceReport', () => {
         {
           id: 'freedom-dividend-conflict', date: new Date(timestamp).toISOString(),
           type: 'Dividend', amount: 6, currency: 'USD',
-          description: 'Corrected quarterly dividend', raw: { operation_type: 'Dividend' }
+          description: 'Revised quarterly dividend', raw: { operation_type: 'Dividend' }
         }
       ]
     } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
