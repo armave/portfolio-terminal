@@ -136,7 +136,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
-  const [reconciliationRequestId, setReconciliationRequestId] = useState(0);
+  const [reconciliationRequest, setReconciliationRequest] = useState({ accountId: '', requestId: 0 });
   const shouldRenderClosedHistory = hasOpenedClosedHistory || activeDeskView === 'CLOSED_HISTORY';
   const shouldRenderCashCushion = hasOpenedCashCushion ||
     activeDeskView === 'CASH_CUSHION' ||
@@ -509,7 +509,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                     cloudStatus={cloudStatus}
                     cloudSyncStatus={cloudSyncStatus}
                     onOpenReconciliation={() => {
-                      setReconciliationRequestId((current) => current + 1);
+                      setReconciliationRequest((current) => ({ accountId: currentUser?.id || '', requestId: current.requestId + 1 }));
                       emitUiEvent('portfolio:set-active-view', { view: 'CLOSED_HISTORY' });
                     }}
                   />
@@ -649,7 +649,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 canViewCashActivity={currentUser?.role === 'admin'}
                 isSessionCurrent={isAccountSessionCurrent}
                 isWorkspaceSyncReady={workspaceSyncReady}
-                reconciliationRequestId={reconciliationRequestId}
+                reconciliationRequestId={reconciliationRequest.accountId === currentUser?.id ? reconciliationRequest.requestId : 0}
               />
             </Suspense></div>
             : null}

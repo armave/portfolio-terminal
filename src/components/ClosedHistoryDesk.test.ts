@@ -44,8 +44,8 @@ describe('Combined workspace reconciliation shortcut', () => {
   it('opens the existing reconciliation review when the Combined Portfolio requests it', () => {
     const app = readAppSource();
     const source = readSource();
-    expect(app).toContain('setReconciliationRequestId((current) => current + 1)');
-    expect(app).toContain('reconciliationRequestId={reconciliationRequestId}');
+    expect(app).toContain("setReconciliationRequest((current) => ({ accountId: currentUser?.id || '', requestId: current.requestId + 1 }))");
+    expect(app).toContain('reconciliationRequestId={reconciliationRequest.accountId === currentUser?.id ? reconciliationRequest.requestId : 0}');
     expect(source).toContain('reconciliationRequestId?: number');
     expect(source).toContain('if (reconciliationRequestId <= 0) return;');
     expect(source).toContain("void import('./BrokerTransactionReconciliation')");

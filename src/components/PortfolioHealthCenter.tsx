@@ -72,6 +72,11 @@ export function PortfolioHealthCenter({
   const language = getAppLanguage();
   const sessionKey = 'admin:' + accountId;
   const refreshIntervalMs = useQuoteRefreshInterval(DEFAULT_ADMIN_REFRESH_INTERVAL_MS, 'admin');
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
   const portfolioSnapshot = usePortfolioSelector(
     (state) => ({
       positions: state.positions || {},
@@ -119,8 +124,8 @@ export function PortfolioHealthCenter({
     return [...marginHoldings, ...cashHoldings];
   }, [portfolioSnapshot.positions, portfolioSnapshot.cashHoldings]);
   const quoteSummary = useMemo(
-    () => summarizeQuoteFreshness(quoteHoldings, Date.now(), refreshIntervalMs),
-    [quoteHoldings, refreshIntervalMs]
+    () => summarizeQuoteFreshness(quoteHoldings, now, refreshIntervalMs),
+    [quoteHoldings, now, refreshIntervalMs]
   );
   const quoteState = resolvePortfolioQuoteHealthState(quoteSummary);
   const streamState = resolveAccountStreamHealthState(streamHealth);
@@ -128,7 +133,7 @@ export function PortfolioHealthCenter({
   const cloudTone = resolveCloudSyncTone(cloudStatus, cloudSyncStatus);
   const cloudLabel = resolveCloudSyncLabel(cloudStatus, cloudTone, language);
   const lastCloudSyncAt = cloudSyncStatus.lastSyncedAt ?? cloudStatus.lastSyncedAt ?? null;
-  const lastCloudSyncRelative = formatRelativeSyncTime(lastCloudSyncAt, Date.now(), language);
+  const lastCloudSyncRelative = formatRelativeSyncTime(lastCloudSyncAt, now, language);
   const lastCloudSyncExact = formatExactSyncTimestamp(lastCloudSyncAt, language);
 
   const streamStatus = streamState === 'live' ? translateText('Live', language)
@@ -156,7 +161,7 @@ export function PortfolioHealthCenter({
       : translateText('Not confirmed', language);
   const tradeDetail = lastTradeRefreshAt
     ? translateText('Last provider refresh', language) + ': ' +
-      formatRelativeSyncTime(lastTradeRefreshAt, Date.now(), language)
+      formatRelativeSyncTime(lastTradeRefreshAt, now, language)
     : portfolioSnapshot.brokerExecutionCount > 0
       ? translateText('Saved execution history is available, but no provider refresh is confirmed.', language)
       : translateText('No provider refresh has been confirmed yet.', language);

@@ -36,6 +36,7 @@ describe('Portfolio Health Center', () => {
     expect(source).toContain('getLastExecutedTradesRefreshAt(sessionKey)');
     expect(source).toContain('refresh.sessionIdentity === sessionKey');
     expect(source).toContain('resolveCloudSyncTone(cloudStatus, cloudSyncStatus)');
-    expect(source).toContain('summarizeQuoteFreshness(quoteHoldings, Date.now(), refreshIntervalMs)');
+    expect(source).toContain('summarizeQuoteFreshness(quoteHoldings, now, refreshIntervalMs)');
+    expect(source).toContain('window.setInterval(() => setNow(Date.now()), 30_000)');
   });
 });
