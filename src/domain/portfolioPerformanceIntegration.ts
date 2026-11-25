@@ -16,7 +16,7 @@ import {
 } from './portfolioPerformance';
 import { isPortfolioPerformanceValuationSnapshot } from './portfolioPerformanceCapture';
 import type { PortfolioState } from '../types/portfolio';
-import type { PortfolioTransactionEvent } from '../types/portfolioTransaction';
+import type { PortfolioTransactionEvent, PortfolioTransactionEventType } from '../types/portfolioTransaction';
 import { classifyCashflow, normalizeClassifiedCashflowAmount } from './cashflowClassification';
 
 const CASH_ITEM_KEY = 'cash';
