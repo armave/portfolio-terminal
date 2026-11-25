@@ -13,7 +13,7 @@ It is **not** a broker connection, order-entry system, source of official accoun
 
 * **Cash Cushion & Non-Margin Holdings:** Tracks cash balance and equity holdings separately from leveraged margin positions.
 
-* **Cash Activity Ledger:** Reviews broker-reported deposits, withdrawals, income and costs beside app-owned cash activity. Manual USD postings use audited store commands; broker cashflow imports remain evidence-only.
+* **Cash Activity Ledger:** A read-only review of broker-reported deposits, withdrawals, income and costs alongside existing app journal evidence. Broker cashflow imports remain evidence-only; the ledger cannot add manual cash activity.
 
 
 * **Broker Financial Engine:** Models daily margin interest compounding, rollover timings, trade commissions (flat, per-share, or value percentage), account equity, break-even targets, and stop-out risk.
