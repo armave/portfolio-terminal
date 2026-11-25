@@ -27,7 +27,10 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).not.toContain('postCashActivity');
     expect(source).not.toContain('ManualCashActivity');
     expect(source).not.toContain('Record manual cash activity');
-    expect(source).not.toContain('portfolioStore');
+    expect(source).not.toContain('portfolioStore.');
+    expect(source).not.toContain('setFreeCash');
+    expect(source).not.toContain('setCashBalance');
+    expect(source).not.toContain('setMarginDebt');
   });
 
   it('filters by search, category, period, source and data quality, and can clear filters', () => {
