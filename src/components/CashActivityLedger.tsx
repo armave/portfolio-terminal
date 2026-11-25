@@ -1,6 +1,5 @@
-import { useMemo, useRef, useState } from 'preact/hooks';
-import { portfolioStore, usePortfolioSelector } from '../store/portfolioStore';
-import type { ManualCashActivityCategory } from '../store/portfolioStore';
+import { useMemo, useState } from 'preact/hooks';
+import { usePortfolioSelector } from '../store/portfolioStore';
 import type { PortfolioState } from '../types/portfolio';
 import type { CashflowCategory, PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { classifyCashflow, hasKnownCashflowDirection, normalizeClassifiedCashflowAmount } from '../domain/cashflowClassification';
@@ -9,12 +8,6 @@ import { formatUSD } from '../utils/formatters';
 import { TablePagination } from './TablePagination';
 import { TableScrollRegion } from './TableScrollRegion';
 import { sliceTablePage, useTablePagination } from '../ui/useTablePagination';
-
-interface CashActivityLedgerProps {
-  accountId: string;
-  canPostCashActivity: boolean;
-  isSessionCurrent: () => boolean;
-}
 
 interface CashActivitySnapshot {
   cashflows: PortfolioState['cashflows'];
@@ -34,6 +27,7 @@ interface CashActivityRow {
   source: 'TradeNet' | 'App';
   quality: 'verified' | 'provisional' | 'unclassified';
   debtOnly?: boolean;
+  legacyManual?: boolean;
 }
 
 const selectCashActivity = (state: PortfolioState): CashActivitySnapshot => ({
@@ -112,35 +106,6 @@ function formatDate(timestamp: number | null): string {
   }).format(timestamp);
 }
 
-function localDateInputValue(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return year + '-' + month + '-' + day;
-}
-
-function asLocalMiddayTimestamp(value: string): number | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const [year, month, day] = value.split('-').map(Number);
-  const parsed = new Date(year, month - 1, day, 12, 0, 0, 0);
-  const timestamp = parsed.getTime();
-  return Number.isFinite(timestamp) && parsed.getFullYear() === year &&
-    parsed.getMonth() === month - 1 && parsed.getDate() === day ? timestamp : null;
-}
-
-const MANUAL_CATEGORIES: Array<{ value: ManualCashActivityCategory; label: string }> = [
-  { value: 'deposit', label: 'Deposit' },
-  { value: 'withdrawal', label: 'Withdrawal' },
-  { value: 'dividend', label: 'Dividend' },
-  { value: 'interest_income', label: 'Interest income' },
-  { value: 'commission', label: 'Commission' },
-  { value: 'fee', label: 'Fee' },
-  { value: 'tax', label: 'Tax' },
-  { value: 'margin_interest', label: 'Margin interest' },
-  { value: 'transfer', label: 'Transfer' }
-];
-
 function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
   const rows: CashActivityRow[] = [];
   for (const row of snapshot.cashflows || []) {
@@ -201,7 +166,14 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
       currency: eventCurrency,
       signedCash,
       source: 'App',
-      quality: eventCurrency ? 'verified' : 'provisional',
+      legacyManual: event.source === 'manual-cash-activity' ||
+        event.source === 'manual-cash-adjustment' ||
+        event.source === 'manual-margin-adjustment',
+      quality: event.source === 'manual-cash-activity' ||
+        event.source === 'manual-cash-adjustment' ||
+        event.source === 'manual-margin-adjustment' || !eventCurrency
+        ? 'provisional'
+        : 'verified',
       debtOnly: event.type === 'margin.interest' && signedCash === 0
     });
   }
@@ -212,11 +184,7 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
   );
 }
 
-export function CashActivityLedger({
-  accountId,
-  canPostCashActivity,
-  isSessionCurrent
-}: CashActivityLedgerProps) {
+export function CashActivityLedger() {
   const snapshot = usePortfolioSelector(selectCashActivity, equalSnapshot);
   const rows = useMemo(() => buildLedgerRows(snapshot), [
     snapshot.cashflows, snapshot.transactionEvents
@@ -224,14 +192,8 @@ export function CashActivityLedger({
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [periodFilter, setPeriodFilter] = useState('all');
-  const [entryCategory, setEntryCategory] = useState<ManualCashActivityCategory>('deposit');
-  const [entryDirection, setEntryDirection] = useState<'in' | 'out'>('out');
-  const [entryAmount, setEntryAmount] = useState('');
-  const [entryDate, setEntryDate] = useState(localDateInputValue);
-  const [entryNote, setEntryNote] = useState('');
-  const [entryMessage, setEntryMessage] = useState('');
-  const [entryError, setEntryError] = useState(false);
-  const lastSubmittedRequest = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [qualityFilter, setQualityFilter] = useState('all');
 
   const filteredRows = useMemo(() => {
     const now = Date.now();
@@ -245,14 +207,29 @@ export function CashActivityLedger({
     const query = search.trim().toLowerCase();
     return rows.filter(row => {
       if (categoryFilter !== 'all' && row.category !== categoryFilter) return false;
+      if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
+      if (qualityFilter !== 'all' && row.quality !== qualityFilter) return false;
       if (startAt !== null && (row.timestamp === null || row.timestamp < startAt)) return false;
-      if (query && !(row.description + ' ' + categoryLabel(row.category) + ' ' + row.currency)
-        .toLowerCase().includes(query)) return false;
+      const searchableText = [
+        row.id, row.description, categoryLabel(row.category), row.currency || '',
+        row.source, row.quality, row.legacyManual ? 'historical manual entry' : ''
+      ].join(' ').toLowerCase();
+      if (query && !searchableText.includes(query)) return false;
       return true;
     });
-  }, [rows, search, categoryFilter, periodFilter]);
+  }, [rows, search, categoryFilter, periodFilter, sourceFilter, qualityFilter]);
   const pagination = useTablePagination('cash-activity', filteredRows.length, 10);
   const visibleRows = sliceTablePage(filteredRows, pagination.currentPage, pagination.pageSize);
+  const hasActiveFilters = Boolean(search.trim()) || categoryFilter !== 'all' ||
+    periodFilter !== 'all' || sourceFilter !== 'all' || qualityFilter !== 'all';
+  const clearFilters = () => {
+    setSearch('');
+    setCategoryFilter('all');
+    setPeriodFilter('all');
+    setSourceFilter('all');
+    setQualityFilter('all');
+    pagination.setPage(1);
+  };
 
   const usdRows = filteredRows.filter(row => row.quality === 'verified' && row.currency === 'USD' && row.signedCash !== null);
   const knownInflows = usdRows.reduce((sum, row) => sum + Math.max(0, row.signedCash || 0), 0);
@@ -267,54 +244,7 @@ export function CashActivityLedger({
   const currentCash = typeof snapshot.cashCushion?.freeCash === 'number' &&
     Number.isFinite(snapshot.cashCushion.freeCash) ? snapshot.cashCushion.freeCash : null;
   const currentDebt = typeof snapshot.balance === 'number' && Number.isFinite(snapshot.balance)
-    ? Math.abs(snapshot.balance) : null;
-
-  const submitEntry = (event: Event) => {
-    event.preventDefault();
-    setEntryMessage('');
-    setEntryError(false);
-    if (!canPostCashActivity || !isSessionCurrent()) {
-      setEntryError(true);
-      setEntryMessage(translateText('This account cannot post cash activity.', getAppLanguage()));
-      return;
-    }
-    const amount = Number(entryAmount);
-    const effectiveAt = asLocalMiddayTimestamp(entryDate);
-    if (!Number.isFinite(amount) || amount <= 0 || effectiveAt === null) {
-      setEntryError(true);
-      setEntryMessage(translateText('Enter a positive amount and a valid activity date.', getAppLanguage()));
-      return;
-    }
-    const fingerprint = JSON.stringify([
-      accountId, entryCategory, amount, 'USD', effectiveAt, entryNote.trim(),
-      entryCategory === 'transfer' ? entryDirection : null
-    ]);
-    const idempotencyKey = lastSubmittedRequest.current?.fingerprint === fingerprint
-      ? lastSubmittedRequest.current.idempotencyKey
-      : 'cash-activity:' + accountId + ':' + Date.now().toString(36) + ':' +
-        Math.random().toString(36).slice(2, 10);
-    const result = portfolioStore.postCashActivity({
-      category: entryCategory,
-      amount,
-      currency: 'USD',
-      effectiveAt,
-      note: entryNote.trim(),
-      direction: entryCategory === 'transfer' ? entryDirection : undefined,
-      idempotencyKey
-    });
-    if (!result) {
-      setEntryError(true);
-      setEntryMessage(translateText(
-        'Activity was not posted. Check available USD cash, the amount and local storage, then retry.',
-        getAppLanguage()
-      ));
-      return;
-    }
-    lastSubmittedRequest.current = { fingerprint, idempotencyKey };
-    setEntryAmount('');
-    setEntryNote('');
-    setEntryMessage(translateText('Cash activity was posted and saved.', getAppLanguage()));
-  };
+    ? Math.max(0, -snapshot.balance) : null;
 
   const currencyAmount = (value: number | null, sign = '') =>
     value === null ? '—' : sign + formatMoney(value, 'USD');
@@ -323,19 +253,19 @@ export function CashActivityLedger({
     <section class="space-y-4" aria-label={translateText('Cash Activity ledger', getAppLanguage())}>
       <div class="grid grid-cols-2 gap-2 xl:grid-cols-4">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Available USD cash', getAppLanguage())}</p>
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Current available USD cash', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold tabular-nums text-slate-100">{currencyAmount(currentCash)}</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Margin debt', getAppLanguage())}</p>
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Current margin debt', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold tabular-nums text-slate-100">{currencyAmount(currentDebt)}</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Known inflows · USD', getAppLanguage())}</p>
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Filtered verified inflows · USD', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold tabular-nums text-emerald-300">{currencyAmount(knownInflows, '+')}</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Known outflows · USD', getAppLanguage())}</p>
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Filtered verified outflows · USD', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold tabular-nums text-rose-300">{currencyAmount(knownOutflows, '−')}</p>
           {Math.abs(marginInterest) > 0 && <p class="mt-1 text-[10px] text-slate-500">{translateText('Margin interest recorded', getAppLanguage())}: {marginInterest < 0 ? '−' : ''}{formatMoney(marginInterest, 'USD')}</p>}
         </div>
@@ -350,63 +280,12 @@ export function CashActivityLedger({
         <p class="text-[10px] text-slate-500">{translateText('Other-currency records are shown but excluded from USD summary totals.', getAppLanguage())}</p>
       )}
 
-      {canPostCashActivity && (
-        <form onSubmit={submitEntry} class="rounded-lg border border-slate-800 bg-slate-950/40 p-3 sm:p-4">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="text-sm font-semibold text-slate-100">{translateText('Record manual cash activity', getAppLanguage())}</h3>
-            <span class="rounded border border-slate-700 px-2 py-1 text-[10px] text-slate-400">{translateText('Posts to USD cash ledger', getAppLanguage())}</span>
-          </div>
-          <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              {translateText('Activity type', getAppLanguage())}
-              <select value={entryCategory} onChange={event => { lastSubmittedRequest.current = null; setEntryCategory((event.currentTarget as HTMLSelectElement).value as ManualCashActivityCategory); }}
-                class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100">
-                {MANUAL_CATEGORIES.map(item => <option value={item.value}>{translateText(item.label, getAppLanguage())}</option>)}
-              </select>
-            </label>
-            <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              {translateText('Amount · USD', getAppLanguage())}
-              <input type="number" min="0.01" step="0.01" value={entryAmount}
-                onInput={event => { lastSubmittedRequest.current = null; setEntryAmount((event.currentTarget as HTMLInputElement).value); }}
-                required class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-right font-mono text-sm text-slate-100" />
-            </label>
-            <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              {translateText('Activity date', getAppLanguage())}
-              <input type="date" value={entryDate} onInput={event => { lastSubmittedRequest.current = null; setEntryDate((event.currentTarget as HTMLInputElement).value); }}
-                required class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100" />
-            </label>
-            <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              {translateText('Note (optional)', getAppLanguage())}
-              <input value={entryNote} maxLength={240} onInput={event => { lastSubmittedRequest.current = null; setEntryNote((event.currentTarget as HTMLInputElement).value); }}
-                placeholder={translateText('Description or reference', getAppLanguage())}
-                class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100" />
-            </label>
-          </div>
-          {entryCategory === 'transfer' && (
-            <div class="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-300">
-              <span>{translateText('Transfer direction', getAppLanguage())}</span>
-              <label class="inline-flex items-center gap-1.5"><input type="radio" name="cash-transfer-direction" checked={entryDirection === 'in'} onChange={() => { lastSubmittedRequest.current = null; setEntryDirection('in'); }} />{translateText('Inflow', getAppLanguage())}</label>
-              <label class="inline-flex items-center gap-1.5"><input type="radio" name="cash-transfer-direction" checked={entryDirection === 'out'} onChange={() => { lastSubmittedRequest.current = null; setEntryDirection('out'); }} />{translateText('Outflow', getAppLanguage())}</label>
-            </div>
-          )}
-          <p class="mt-2 text-[10px] leading-relaxed text-slate-500">
-            {translateText('Withdrawals, fees and transfers out use available cash only. They never create margin debt. Margin interest increases debt only when explicitly recorded as this activity type.', getAppLanguage())}
-          </p>
-          <div class="mt-3 flex flex-wrap items-center gap-3">
-            <button type="submit" class="min-h-10 rounded border border-cyan-700/70 bg-cyan-950/30 px-4 text-xs font-semibold text-cyan-200 hover:bg-cyan-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
-              {translateText('Save activity', getAppLanguage())}
-            </button>
-            {entryMessage && <p role={entryError ? 'alert' : 'status'} class={entryError ? 'text-xs text-rose-300' : 'text-xs text-emerald-300'}>{entryMessage}</p>}
-          </div>
-        </form>
-      )}
-
       <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             {translateText('Search activity', getAppLanguage())}
             <input value={search} onInput={event => { setSearch((event.currentTarget as HTMLInputElement).value); pagination.setPage(1); }}
-              placeholder={translateText('Description, reference or type', getAppLanguage())}
+              placeholder={translateText('Search description, source, ID or type', getAppLanguage())}
               class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100" />
           </label>
           <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -429,11 +308,36 @@ export function CashActivityLedger({
               <option value="year">{translateText('This year', getAppLanguage())}</option>
             </select>
           </label>
+          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {translateText('Source', getAppLanguage())}
+            <select value={sourceFilter} onChange={event => { setSourceFilter((event.currentTarget as HTMLSelectElement).value); pagination.setPage(1); }}
+              class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100">
+              <option value="all">{translateText('All sources', getAppLanguage())}</option>
+              <option value="TradeNet">TradeNet</option>
+              <option value="App">App</option>
+            </select>
+          </label>
+          <label class="flex min-w-0 flex-col gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            {translateText('Data quality', getAppLanguage())}
+            <select value={qualityFilter} onChange={event => { setQualityFilter((event.currentTarget as HTMLSelectElement).value); pagination.setPage(1); }}
+              class="min-h-10 rounded border border-slate-700 bg-slate-950 px-2.5 text-xs font-normal normal-case tracking-normal text-slate-100">
+              <option value="all">{translateText('All qualities', getAppLanguage())}</option>
+              <option value="verified">{translateText('Verified', getAppLanguage())}</option>
+              <option value="provisional">{translateText('Provisional', getAppLanguage())}</option>
+              <option value="unclassified">{translateText('Unclassified', getAppLanguage())}</option>
+            </select>
+          </label>
+        </div>
+        <div class="mt-2 flex justify-end">
+          <button type="button" disabled={!hasActiveFilters} onClick={clearFilters}
+            class="min-h-8 rounded border border-slate-700 px-3 text-[10px] font-semibold text-slate-400 hover:text-slate-200 disabled:cursor-not-allowed disabled:opacity-40">
+            {translateText('Clear filters', getAppLanguage())}
+          </button>
         </div>
 
         <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
-          <span>{filteredRows.length} {translateText('records shown', getAppLanguage())}</span>
-          <span>{translateText('Known net cash movement', getAppLanguage())}: {currencyAmount(knownInflows - knownOutflows, knownInflows >= knownOutflows ? '+' : '−')}</span>
+          <span>{filteredRows.length} {translateText('records shown', getAppLanguage())} · {rows.length} {translateText('total records', getAppLanguage())}</span>
+          <span>{translateText('Summary reflects current filters', getAppLanguage())} · {translateText('Filtered net USD movement', getAppLanguage())}: {currencyAmount(knownInflows - knownOutflows, knownInflows >= knownOutflows ? '+' : '−')}</span>
         </div>
 
         {filteredRows.length === 0 ? (
@@ -464,11 +368,13 @@ export function CashActivityLedger({
                     const amountTone = signedDisplay === null
                       ? 'text-amber-300'
                       : isInflow ? 'text-emerald-300' : 'text-rose-300';
-                    const qualityLabel = row.quality === 'verified'
-                      ? 'Provider ID / app record'
-                      : row.quality === 'provisional'
-                        ? 'Provisional source identity'
-                        : 'Unclassified source row';
+                    const qualityLabel = row.legacyManual
+                      ? 'Historical manual entry · unverified'
+                      : row.quality === 'verified'
+                        ? 'Provider ID / app record'
+                        : row.quality === 'provisional'
+                          ? 'Provisional source identity'
+                          : 'Unclassified source row';
                     return (
                       <tr key={row.id} class="align-top transition-colors hover:bg-slate-900/40">
                         <td class="whitespace-nowrap px-3 py-3 text-slate-400">{formatDate(row.timestamp)}</td>
