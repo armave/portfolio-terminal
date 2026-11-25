@@ -552,8 +552,10 @@ describe('buildPortfolioPerformanceReport', () => {
       ]
     } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
 
-    expect(report.incomeCosts?.status).toBe('unavailable');
-    expect(report.incomeCosts?.reason).toContain('conflicting facts');
+    expect(report.incomeCosts).toMatchObject({
+      status: 'unavailable',
+      reason: expect.stringContaining('conflicting facts')
+    });
   });
 
   it('withholds income and cost totals when a broker row ambiguously matches multiple manual postings', () => {
@@ -574,8 +576,10 @@ describe('buildPortfolioPerformanceReport', () => {
       }]
     } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
 
-    expect(report.incomeCosts?.status).toBe('unavailable');
-    expect(report.incomeCosts?.reason).toContain('ambiguous');
+    expect(report.incomeCosts).toMatchObject({
+      status: 'unavailable',
+      reason: expect.stringContaining('ambiguous')
+    });
   });
 
 
@@ -592,8 +596,10 @@ describe('buildPortfolioPerformanceReport', () => {
         }]
       } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
 
-      expect(report.incomeCosts?.status).toBe('unavailable');
-      expect(report.incomeCosts?.reason).toContain('invalid amount');
+      expect(report.incomeCosts).toMatchObject({
+        status: 'unavailable',
+        reason: expect.stringContaining('invalid amount')
+      });
     }
   );
 
