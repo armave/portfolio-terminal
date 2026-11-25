@@ -1393,6 +1393,43 @@ describe('Freedom quote endpoint', () => {
       createHmac('sha256', 'private-key').update(upstreamInit.body + timestamp).digest('hex')
     );
   });
+
+  it('keeps concurrent quote cache misses isolated to their incoming Worker requests', async () => {
+    const ticker = 'PTCONCURRENT.US';
+    const resolvers = [];
+    const fetchMock = vi.fn(() => new Promise((resolve) => resolvers.push(resolve)));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const fetchQuote = () => worker.fetch(new Request(
+      `https://worker.test/?action=freedom-quote&symbol=${ticker}`,
+      { headers: { 'X-App-Auth': 'test-secret' } }
+    ), {
+      GATEWAY_SECRET: 'test-secret',
+      FREEDOM_PUBLIC_KEY: 'public-key',
+      FREEDOM_PRIVATE_KEY: 'private-key'
+    });
+
+    const first = fetchQuote();
+    const second = fetchQuote();
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    for (const resolve of resolvers) {
+      resolve(new Response(JSON.stringify({
+        q: [{ c: ticker, ltp: '123.45', pp: '120.00' }]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }
+
+    const responses = await Promise.all([first, second]);
+    expect(responses.map(response => response.status)).toEqual([200, 200]);
+
+    const payloads = await Promise.all(responses.map(response => response.json()));
+    expect(payloads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ok: true, symbol: ticker }),
+      expect.objectContaining({ ok: true, symbol: ticker })
+    ]));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('Freedom authenticated quote WebSocket stream', () => {
