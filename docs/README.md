@@ -14,7 +14,7 @@ This directory contains maintained product and engineering references, current o
 
 - [Account sessions](account-sessions.md) — server-enforced session expiry, per-account session cap, and revocation behavior.
 - [Portfolio planning settings](portfolio-settings.md) — admin-managed app guardrails, defaults, scope, and validation boundaries.
-- [Cash Activity ledger](cash-activity-ledger.md) — shared broker/manual cashflow classification, evidence-only imports, admin-owned USD postings, and reconciliation/performance rules.
+- [Cash Activity ledger](cash-activity-ledger.md) — read-only broker cashflow review, evidence-only imports, filtered verified USD summaries, and reconciliation/performance rules.
 - [Role-based portfolio synchronization](ROLE_SYNC_POLICY.md) — role-specific refresh policy and data visibility.
 - [Settings information architecture and safety UX](settings-ux.md) — role-aware navigation, synchronization-status semantics, backup/recovery separation, and financial-setting presentation.
 - [Session-scoped browser storage](session-scoped-browser-storage.md) — local storage namespaces, authenticated workspace transitions, and account-scoped IndexedDB recovery/migration for current, recovery, and legacy portfolio snapshots and history.
