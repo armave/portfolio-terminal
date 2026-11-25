@@ -57,6 +57,8 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain("quality: event.source === 'manual-cash-activity'");
     expect(source).toContain("'Historical manual entry · unverified'");
     expect(source).toContain("row.quality !== 'verified'");
+    expect(source).toContain("'margin.adjustment'");
+    expect(source).toContain('signedDebt');
   });
 
   it('retains the distinction between cash movement and debt-only margin interest', () => {
