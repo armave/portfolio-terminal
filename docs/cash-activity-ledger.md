@@ -8,9 +8,11 @@ This confirms the application release path and published shell. CI browser journ
 
 ## User experience
 
-The administrator Trades desk contains **Closed trades** and **Cash Activity** views. Cash Activity displays source broker cashflows and app-owned journal entries in one chronological ledger with search, category and period filters. Summary values include current available USD cash, margin debt, and verified USD inflows/outflows. The UI is responsive and uses the existing English/Russian localization system.
+The administrator Trades desk contains **Closed trades** and **Cash Activity** views. Cash Activity is a read-only chronological ledger of broker cashflows and existing app-owned journal events. It supports search across descriptions and source IDs, category, period, source and data-quality filters. The responsive UI uses the existing English/Russian localization system.
 
-The manual-entry form supports deposit, withdrawal, dividend, credited interest, commission, fee, tax, transfer and margin interest. Transfers require an explicit inflow/outflow direction. The form is administrator-only in the current application; guest users continue to receive their server-filtered holdings/LOTS projection and do not load administrator Closed History.
+The summary deliberately separates account state from filtered history: current available USD cash and current margin debt are read from canonical state, while verified USD inflows, outflows and net movement are calculated across all rows matching the current filters (not just the visible page). The current margin-debt card follows the signed-balance contract: negative `balance` is debt; positive values are not shown as debt.
+
+There is no manual cash activity form or manual posting action. Previously saved app-owned cash activity remains visible as historical journal evidence. Rows created by the former manual-entry command are marked provisional and excluded from verified USD flow summaries; they are not deleted, rewritten or replayed. The administrator-only visibility boundary remains unchanged; guest users continue to receive their server-filtered holdings/LOTS projection and do not load administrator Closed History.
 
 ## Ownership and persisted state
 
@@ -46,21 +48,17 @@ Broker refresh merges cashflow rows into the existing history through the app-ow
 
 Provider IDs are preferred. Rows without a provider operation ID get a deterministic fallback display identity and are marked provisional. Duplicate-looking rows in a single provider response are retained as separate rows rather than silently collapsed. Fallback IDs do not qualify as verified broker fee inputs or confirmed reconciliation matches. Same-ID changed records continue through the existing revision/conflict rules.
 
-## Manual posting command
+## Read-only history and legacy data
 
-The form calls `PortfolioStore.postCashActivity`. The command validates a finite positive magnitude, USD currency, valid effective timestamp and idempotency key. It uses the existing `updateFinancialMutation` boundary to prepare the canonical balance change and append the corresponding journal event in the same state commit.
+The former `PortfolioStore.postCashActivity` command and its entry form have been removed. New cash activity can enter this ledger only through broker history or existing system-owned journal events. Broker imports remain evidence-only: normalized source rows and broker-authored journal copies do not mutate `cashCushion.freeCash` or signed `balance`.
 
-The mutation is persisted before state publication, as with other audited financial commands. A request fingerprint makes an identical idempotency-key retry a successful no-op and rejects reuse of the same key for different facts.
-
-Cash outflows require existing app free cash. If the proposed movement would make `cashCushion.freeCash` negative, the command rejects without changing state or journal history. It never converts a withdrawal, fee, tax, commission or transfer-out into margin borrowing. A positive signed broker/account cash balance remains a separate valuation bucket and does not block non-margin activity or get silently netted into app free cash. Non-USD manual postings are rejected because the current canonical cash/debt fields are USD-denominated; no FX rate or second cash subledger is inferred.
-
-Manual margin interest is a deliberate exception to cash-paid costs: it does not reduce free cash and capitalizes only when the signed broker/account balance is zero or negative. It is rejected while that balance is positive cash, rather than silently reducing broker cash or fabricating margin debt. Its realized-charge delta follows the existing rollover rule: it is added to `realizedMarginCharged` only when there are no position tickers or invested cost basis is zero; otherwise it remains capitalized in debt for the open-position financing calculation. The journal records the explicit realized-charge delta, including zero.
+Persisted transaction events are not migrated or deleted. Earlier `manual-cash-activity` rows, along with older manual cash/margin adjustment events, remain visible as app-sourced historical records and are marked provisional. They are excluded from verified USD cashflow totals so user-entered historical data is not presented as broker-verified activity. Current balances are not automatically reversed or recomputed from these historical rows.
 
 ## Reconciliation and performance
 
 Broker cashflow reconciliation compares both journal event type and the shared category. That prevents two records that both use the generic `fee` event type (for example, tax vs. commission) from being treated as the same cashflow solely because their amount/date/currency happen to match.
 
-The income/cost summary reads normalized broker cashflows plus app/system-owned income/cost events. It skips broker journal copies to avoid duplicates. When a broker row uniquely matches an app-owned manual Cash Activity posting by event type/category, currency, signed amount (within USD 0.01), and timestamp (within 24 hours), the broker row is preferred and the manual copy is omitted. Equally close manual candidates, a category/type conflict, or an opposite signed movement against a matching manual posting withhold the income/cost summary rather than guessing or netting potentially conflicting records. Identical normalized facts under one stable broker cashflow ID are counted once; conflicting facts under that ID make the summary unavailable. Fallback identities remain distinct and provisional rather than being collapsed by appearance.
+The income/cost summary reads normalized broker cashflows plus app/system-owned income/cost events and skips broker journal copies to avoid duplicates. Its existing matching rules for persisted legacy manual Cash Activity events are retained: when a broker row uniquely matches an older app-owned manual event by event type/category, currency, signed amount (within USD 0.01), and timestamp (within 24 hours), the broker row is preferred and the manual copy is omitted. Equally close legacy candidates, a category/type conflict, or an opposite signed movement withhold the income/cost summary rather than guessing. These compatibility rules protect historical performance reports; they do not provide a new manual-entry path. Identical normalized facts under one stable broker cashflow ID are counted once; conflicting facts under that ID make the summary unavailable. Fallback identities remain distinct and provisional rather than being collapsed by appearance.
 
 Credited interest is shown separately from margin interest. For margin-interest reconciliation, the comparison uses financing/debt capitalization evidence rather than the intentionally zero account-cash delta. These figures are explanatory and are not added a second time to TWR/MWR. Deposits and withdrawals remain the external performance flows consumed by the existing performance adapter.
 
@@ -76,7 +74,7 @@ Credited interest is shown separately from margin interest. For margin-interest 
 
 ## Validation to retain
 
-Tests cover shared classification and sign normalization, ambiguous-margin fail-closed behavior, duplicate-looking fallback-ID preservation, broker evidence-only journal behavior, category-aware reconciliation, manual-post idempotency and outflow rejection, separation of positive broker cash from app free cash, manual credited-interest replay, margin-interest debt capitalization (including the existing open-position realized-charge rule), income-cost reporting, and Russian translation parity.
+Tests cover shared classification and sign normalization, ambiguous-margin fail-closed behavior, duplicate-looking fallback-ID preservation, broker evidence-only journal behavior, category-aware reconciliation, read-only ledger rendering, source/data-quality filters, legacy manual-row visibility and exclusion from verified summaries, separation of current balances from filtered flow summaries, margin-interest debt-only presentation, income-cost reporting and Russian translation parity.
 
 ## Production validation evidence
 
