@@ -9,7 +9,6 @@ import { ModalFrame } from './ModalFrame';
 
 export interface TrancheDetailsRow {
   key: string;
-  number: number;
   date: string;
   quantity: number | null;
   entryPrice: number | null;
@@ -68,7 +67,6 @@ export function buildTrancheDetailsRows(
 
     return {
       key: tranche.lotId || `tranche-${index + 1}`,
-      number: index + 1,
       date,
       quantity,
       entryPrice,
@@ -92,23 +90,18 @@ export function TrancheDetailsModal({
   ticker,
   tranches,
   quantities,
-  positionShares,
-  totalInvested,
-  averageEntry,
   restoreFocusRef,
   onClose
 }: {
   ticker: string;
   tranches: TrancheItem[];
   quantities: Array<number | null>;
-  positionShares: number;
-  totalInvested: number;
-  averageEntry: number;
   restoreFocusRef: { current: HTMLButtonElement | null };
   onClose: () => void;
 }) {
   const language = getAppLanguage();
   const rows = buildTrancheDetailsRows(tranches, quantities, language);
+  const hasBuyCommission = rows.some((row) => row.buyCommission !== null);
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const closeRef = useRef<(() => void) | null>(null);
@@ -121,10 +114,6 @@ export function TrancheDetailsModal({
   });
 
   if (typeof document === 'undefined') return null;
-
-  const safeShares = Number.isFinite(positionShares) ? formatQuantity(positionShares, language) : '—';
-  const safeInvested = Number.isFinite(totalInvested) ? formatUSD(totalInvested) : '—';
-  const safeAverageEntry = Number.isFinite(averageEntry) && averageEntry > 0 ? formatUSD(averageEntry) : '—';
 
   return createPortal(
     <ModalFrame
@@ -140,12 +129,8 @@ export function TrancheDetailsModal({
         <div class="min-w-0">
           <p class="tranche-details-eyebrow">{translateText('Position tranches', language)}</p>
           <h2 id="trancheDetailsTitle">{ticker}</h2>
-          <p class="tranche-details-subtitle">
-            {translateText('Open purchase lots for {ticker}', language).replace('{ticker}', ticker)}
-          </p>
         </div>
         <div class="tranche-details-header-actions">
-          <span class="tranche-details-count">{tranches.length}</span>
           <button
             ref={closeButtonRef}
             type="button"
@@ -159,46 +144,31 @@ export function TrancheDetailsModal({
       </header>
 
       <div class="tranche-details-content" data-tranche-count={tranches.length}>
-        <div class="tranche-details-summary">
-          <div class="tranche-details-summary-card">
-            <span>{translateText('Position shares', language)}</span>
-            <strong>{safeShares}</strong>
-          </div>
-          <div class="tranche-details-summary-card">
-            <span>{translateText('Total Invested', language)}</span>
-            <strong>{safeInvested}</strong>
-          </div>
-          <div class="tranche-details-summary-card">
-            <span>{translateText('Average entry', language)}</span>
-            <strong>{safeAverageEntry}</strong>
-          </div>
-        </div>
-
         {rows.length > 0 ? (
           <div class="tranche-details-table-scroll" role="region" aria-label={translateText('Position tranches', language)} tabIndex={0}>
             <table class="tranche-details-table">
               <caption class="sr-only">{translateText('Position tranches', language)} · {ticker}</caption>
               <thead>
                 <tr>
-                  <th scope="col">{translateText('Tranche', language)}</th>
                   <th scope="col">{translateText('Date', language)}</th>
                   <th scope="col">{translateText('Quantity', language)}</th>
                   <th scope="col">{translateText('Entry price', language)}</th>
                   <th scope="col">{translateText('Cost basis', language)}</th>
-                  <th scope="col">{translateText('Buy commission', language)}</th>
+                  {hasBuyCommission && <th scope="col">{translateText('Buy commission', language)}</th>}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.key} data-tranche-row>
-                    <th scope="row">
-                      <span class="tranche-details-row-number">{String(row.number).padStart(2, '0')}</span>
-                    </th>
-                    <td>{row.date}</td>
-                    <td class="tranche-details-number">{row.quantity === null ? '—' : formatQuantity(row.quantity, language)}</td>
-                    <td class="tranche-details-number">{formatOptionalMoney(row.entryPrice)}</td>
-                    <td class="tranche-details-number">{formatOptionalMoney(row.costBasis)}</td>
-                    <td class="tranche-details-number">{formatOptionalMoney(row.buyCommission)}</td>
+                    <th scope="row" data-label={translateText('Date', language)}>{row.date}</th>
+                    <td data-label={translateText('Quantity', language)} class="tranche-details-number">{row.quantity === null ? '—' : formatQuantity(row.quantity, language)}</td>
+                    <td data-label={translateText('Entry price', language)} class="tranche-details-number">{formatOptionalMoney(row.entryPrice)}</td>
+                    <td data-label={translateText('Cost basis', language)} class="tranche-details-number">{formatOptionalMoney(row.costBasis)}</td>
+                    {hasBuyCommission && (
+                      <td data-label={translateText('Buy commission', language)} class="tranche-details-number">
+                        {formatOptionalMoney(row.buyCommission)}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

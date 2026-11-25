@@ -6125,7 +6125,7 @@ table tbody tr:hover {
 .tranche-details-header {
   display: flex;
   flex: 0 0 auto;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
@@ -6149,34 +6149,11 @@ table tbody tr:hover {
   letter-spacing: 0.025em;
 }
 
-.tranche-details-subtitle {
-  margin: 0.2rem 0 0;
-  color: #94a3b8;
-  font-size: 0.75rem;
-}
-
 .tranche-details-header-actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 0.65rem;
-}
-
-.tranche-details-count {
-  display: inline-flex;
-  min-width: 2rem;
-  min-height: 2rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(34, 211, 238, 0.25);
-  border-radius: 999px;
-  background: rgba(8, 145, 178, 0.14);
-  padding: 0 0.6rem;
-  color: #a5f3fc;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
 }
 
 .tranche-details-close {
@@ -6202,43 +6179,8 @@ table tbody tr:hover {
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  gap: 1rem;
+  gap: 0.75rem;
   padding: 1rem 1.1rem 1.1rem;
-}
-
-.tranche-details-summary {
-  display: grid;
-  flex: 0 0 auto;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
-}
-
-.tranche-details-summary-card {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.3rem;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 0.75rem;
-  background: rgba(15, 23, 42, 0.64);
-  padding: 0.7rem 0.8rem;
-}
-
-.tranche-details-summary-card>span {
-  color: #94a3b8;
-  font-size: 0.64rem;
-  font-weight: 750;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.tranche-details-summary-card>strong {
-  color: #f8fafc;
-  font-family: var(--font-mono);
-  font-size: 0.95rem;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
 }
 
 .tranche-details-table-scroll {
@@ -6256,7 +6198,7 @@ table tbody tr:hover {
 
 .tranche-details-table {
   width: 100%;
-  min-width: 46rem;
+  min-width: 35rem;
   border-collapse: separate;
   border-spacing: 0;
   text-align: left;
@@ -6304,21 +6246,6 @@ table tbody tr:hover {
   text-align: right;
 }
 
-.tranche-details-row-number {
-  display: inline-flex;
-  min-width: 1.75rem;
-  min-height: 1.75rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(34, 211, 238, 0.18);
-  border-radius: 0.45rem;
-  background: rgba(8, 145, 178, 0.12);
-  color: #67e8f9;
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 800;
-}
-
 .tranche-details-empty {
   margin: 0;
   border: 1px dashed rgba(148, 163, 184, 0.28);
@@ -6346,25 +6273,8 @@ table tbody tr:hover {
     padding-inline: 0.75rem;
   }
 
-  .tranche-details-summary {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.45rem;
-  }
-
-  .tranche-details-summary-card {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.6rem 0.7rem;
-  }
-
-  .tranche-details-summary-card>strong {
-    text-align: right;
-  }
-
   .tranche-details-table {
-    min-width: 43rem;
+    min-width: 32rem;
   }
 }
 
