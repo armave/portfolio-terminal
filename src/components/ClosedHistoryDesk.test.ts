@@ -40,6 +40,19 @@ describe('Trades reconciliation audit review', () => {
   });
 });
 
+describe('Combined workspace reconciliation shortcut', () => {
+  it('opens the existing reconciliation review when the Combined Portfolio requests it', () => {
+    const app = readAppSource();
+    const source = readSource();
+    expect(app).toContain("setReconciliationRequest((current) => ({ sessionIdentity: accountSession?.identity || '', sessionGeneration: accountSession?.generation ?? -1, requestId: current.requestId + 1 }))");
+    expect(app).toContain('reconciliationRequestId={reconciliationRequest.sessionIdentity === accountSession?.identity && reconciliationRequest.sessionGeneration === accountSession?.generation ? reconciliationRequest.requestId : 0}');
+    expect(source).toContain('reconciliationRequestId?: number');
+    expect(source).toContain('if (reconciliationRequestId <= 0) return;');
+    expect(source).toContain("void import('./BrokerTransactionReconciliation')");
+    expect(source).toContain("translateText('Reconcile broker activity', getAppLanguage())");
+  });
+});
+
 describe('Trades cache-first rendering', () => {
   it('starts lazy rendering in the navigation render instead of waiting for a passive effect', () => {
     const app = readAppSource();
