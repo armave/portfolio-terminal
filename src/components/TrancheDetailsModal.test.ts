@@ -22,7 +22,6 @@ describe('tranche details rows', () => {
     });
     expect(rows[1]).toMatchObject({
       key: 'lot-new',
-      number: 2,
       quantity: 7,
       entryPrice: 295,
       costBasis: 2065,
@@ -40,6 +39,7 @@ describe('tranche details rows', () => {
     expect(source).not.toContain("translateText('Total Invested'");
     expect(source).not.toContain("translateText('Average entry'");
     expect(source).not.toContain("translateText('Tranche'");
+    expect(source).not.toContain('tranche-details-header-actions');
     expect(source).toContain("rows.some((row) => row.buyCommission !== null)");
     expect(source).toContain("data-label={translateText('Date', language)}");
   });

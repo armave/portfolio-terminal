@@ -1164,11 +1164,13 @@ async function assertFinancialHeaderLayout(page, view) {
           : Number.POSITIVE_INFINITY
       };
     });
-    const requiredHeaders = ['Tranche', 'Date', 'Quantity', 'Entry price', 'Cost basis', 'Buy commission'];
+    const requiredHeaders = ['Date', 'Quantity', 'Entry price', 'Cost basis'];
+    const allowedHeaders = new Set([...requiredHeaders, 'Buy commission']);
     if (modalState.role !== 'dialog' || modalState.modal !== 'true' ||
         modalState.labelledBy !== 'trancheDetailsTitle' ||
         modalState.count !== expectedCount || modalState.rows !== expectedCount ||
         requiredHeaders.some((header) => !modalState.headers.includes(header)) ||
+        modalState.headers.some((header) => !allowedHeaders.has(header)) ||
         !modalState.scrollable || !modalState.dialogWithinViewport ||
         modalState.horizontalCenterOffset > 2 || modalState.verticalCenterOffset > 2) {
       throw new Error('The tranche details modal must show every lot in an accessible, scrollable responsive table: ' + JSON.stringify(modalState));

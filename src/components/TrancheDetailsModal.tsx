@@ -130,17 +130,15 @@ export function TrancheDetailsModal({
           <p class="tranche-details-eyebrow">{translateText('Position tranches', language)}</p>
           <h2 id="trancheDetailsTitle">{ticker}</h2>
         </div>
-        <div class="tranche-details-header-actions">
-          <button
-            ref={closeButtonRef}
-            type="button"
-            class="tranche-details-close"
-            aria-label={translateText('Close', language)}
-            onClick={requestClose}
-          >
-            ×
-          </button>
-        </div>
+        <button
+          ref={closeButtonRef}
+          type="button"
+          class="tranche-details-close"
+          aria-label={translateText('Close', language)}
+          onClick={requestClose}
+        >
+          ×
+        </button>
       </header>
 
       <div class="tranche-details-content" data-tranche-count={tranches.length}>
