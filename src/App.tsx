@@ -136,7 +136,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
-  const [reconciliationRequest, setReconciliationRequest] = useState({ accountId: '', requestId: 0 });
+  const [reconciliationRequest, setReconciliationRequest] = useState({ sessionIdentity: '', sessionGeneration: -1, requestId: 0 });
   const shouldRenderClosedHistory = hasOpenedClosedHistory || activeDeskView === 'CLOSED_HISTORY';
   const shouldRenderCashCushion = hasOpenedCashCushion ||
     activeDeskView === 'CASH_CUSHION' ||
@@ -510,7 +510,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                     cloudStatus={cloudStatus}
                     cloudSyncStatus={cloudSyncStatus}
                     onOpenReconciliation={() => {
-                      setReconciliationRequest((current) => ({ accountId: currentUser?.id || '', requestId: current.requestId + 1 }));
+                      setReconciliationRequest((current) => ({ sessionIdentity: accountSession?.identity || '', sessionGeneration: accountSession?.generation ?? -1, requestId: current.requestId + 1 }));
                       emitUiEvent('portfolio:set-active-view', { view: 'CLOSED_HISTORY' });
                     }}
                   />
@@ -650,7 +650,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 canViewCashActivity={currentUser?.role === 'admin'}
                 isSessionCurrent={isAccountSessionCurrent}
                 isWorkspaceSyncReady={workspaceSyncReady}
-                reconciliationRequestId={reconciliationRequest.accountId === currentUser?.id ? reconciliationRequest.requestId : 0}
+                reconciliationRequestId={reconciliationRequest.sessionIdentity === accountSession?.identity && reconciliationRequest.sessionGeneration === accountSession?.generation ? reconciliationRequest.requestId : 0}
               />
             </Suspense></div>
             : null}
