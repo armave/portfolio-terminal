@@ -42,13 +42,19 @@ export function brokerExecutionHistoryReducer<T>(
         status: state.trades.length > 0 ? 'refreshing' : 'loading'
       };
       if (action.requestId) next.activeRequestId = action.requestId;
-      else delete next.activeRequestId;
+      // A background refresh without an owner must not clear a foreground
+      // request's identity; only that request may settle its loader.
+      else if (!state.activeRequestId) delete next.activeRequestId;
       return next;
     }
     case 'success':
-      // Live-stream and background broker updates may improve the visible
-      // snapshot, but cannot finish a different user-requested refresh.
-      if (state.activeRequestId && action.requestId !== state.activeRequestId) {
+      // An owned completion is accepted only while its exact request still
+      // owns the foreground refresh. This also rejects a late older response
+      // after the newer request has already settled and cleared activeRequestId.
+      if (action.requestId !== undefined && action.requestId !== state.activeRequestId) return state;
+      // An unowned live/background update may improve visible rows but cannot
+      // settle a foreground refresh.
+      if (state.activeRequestId && !action.requestId) {
         return { ...state, trades: [...action.trades] };
       }
       return {
@@ -56,7 +62,10 @@ export function brokerExecutionHistoryReducer<T>(
         status: 'ready'
       };
     case 'failure':
-      if (state.activeRequestId && action.requestId !== state.activeRequestId) return state;
+      // A completion carrying an ID must still own the active request. Unowned
+      // background errors cannot settle an explicit foreground refresh either.
+      if (action.requestId !== undefined && action.requestId !== state.activeRequestId) return state;
+      if (state.activeRequestId && !action.requestId) return state;
       return {
         trades: state.trades,
         status: state.trades.length > 0 ? 'stale' : 'error'

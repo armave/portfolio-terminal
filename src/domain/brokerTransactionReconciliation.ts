@@ -151,7 +151,8 @@ function ticker(value: unknown): string {
   return text(value).toUpperCase().replace(/\.US$/i, '');
 }
 function number(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const result = Number(value);
   return Number.isFinite(result) ? result : null;
 }
@@ -236,8 +237,11 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
     amount: signedAmount, currency: currency(row.currency), at: timestamp(row.date) };
 }
 function eventAmount(event: PortfolioTransactionEvent): number | null {
-  return number(event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
-    (event.type === 'fee' ? event.fees : event.type === 'margin.interest' ? event.financingCost : undefined));
+  const amount = event.type === 'margin.interest'
+    ? event.externalCashFlowAmount ?? event.financingCost ?? event.marginDebtDelta ?? event.grossAmount ?? event.cashDelta
+    : event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
+      (event.type === 'fee' ? event.fees : undefined);
+  return number(amount);
 }
 
 interface UnresolvedCashAdjustmentReversal {

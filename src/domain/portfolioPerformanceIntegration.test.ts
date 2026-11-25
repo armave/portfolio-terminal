@@ -442,6 +442,25 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(report.reason).toContain('cashflow-history baseline');
   });
 
+  it.each([undefined, null, '', ' ', false])(
+    'does not treat a cash transfer with missing or malformed amount %s as zero',
+    (amount) => {
+      const report = buildPortfolioPerformanceReport({
+        performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1100)],
+        transactionEvents: [{
+          id: 'cash-transfer-without-amount', schemaVersion: 1, type: 'cash.transfer',
+          actor: { type: 'user' }, source: 'manual-cash-activity',
+          effectiveAt: BASE + DAY / 2, recordedAt: BASE + DAY / 2,
+          currency: 'USD', cashDelta: amount as unknown as number
+        }],
+        cashflows: []
+      } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+      expect(report.status).toBe('unavailable');
+      expect(report.reason).toBe("A cash transfer or balance adjustment is missing a valid amount; performance is unavailable until its source evidence is repaired.");
+    }
+  );
+
   it('refuses ambiguous adjustments and mixed-currency external flows', () => {
     const baseState = {
       performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1100)],
@@ -471,4 +490,142 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(mixed.status).toBe('unavailable');
     expect(mixed.reason).toContain('different or unknown currency');
   });
+
+  it('counts one broker income row when the same dividend was already posted manually', () => {
+    const timestamp = BASE + DAY / 2;
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+      transactionEvents: [{
+        id: 'manual-dividend-1', schemaVersion: 1, type: 'dividend',
+        cashflowCategory: 'dividend', actor: { type: 'user' }, source: 'manual-cash-activity',
+        effectiveAt: timestamp, recordedAt: timestamp, currency: 'USD',
+        grossAmount: 5, cashDelta: 5
+      }],
+      cashflows: [{
+        id: 'freedom-dividend-1', date: new Date(timestamp).toISOString(),
+        type: 'Dividend', amount: 5, currency: 'USD',
+        description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+      }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts?.status).toBe('available');
+    if (report.incomeCosts && report.incomeCosts.status !== 'unavailable') {
+      expect(report.incomeCosts.value.dividends).toBe(5);
+    }
+  });
+
+  it('counts an identical stable broker cashflow ID only once', () => {
+    const timestamp = BASE + DAY / 2;
+    const row = {
+      id: 'freedom-dividend-duplicate', date: new Date(timestamp).toISOString(),
+      type: 'Dividend', amount: 5, currency: 'USD',
+      description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+    };
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+      transactionEvents: [],
+      cashflows: [row, { ...row }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts?.status).toBe('available');
+    if (report.incomeCosts && report.incomeCosts.status !== 'unavailable') {
+      expect(report.incomeCosts.value.dividends).toBe(5);
+    }
+  });
+
+
+  it('withholds income and cost totals when broker and manual activity directions conflict', () => {
+    const timestamp = BASE + DAY / 2;
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 995)],
+      transactionEvents: [{
+        id: 'manual-commission-outflow', schemaVersion: 1, type: 'fee',
+        cashflowCategory: 'commission', actor: { type: 'user' },
+        source: 'manual-cash-activity', effectiveAt: timestamp, recordedAt: timestamp,
+        currency: 'USD', grossAmount: 5, cashDelta: -5
+      }],
+      cashflows: [{
+        id: 'freedom-commission-refund', date: new Date(timestamp).toISOString(),
+        type: 'Commission', amount: 5, currency: 'USD',
+        description: 'Commission refund', raw: { operation_type: 'Commission refund' }
+      }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts).toMatchObject({
+      status: 'unavailable',
+      reason: expect.stringContaining('opposite signed movement')
+    });
+  });
+
+
+  it('withholds income and cost totals when one stable broker cashflow ID has conflicting facts', () => {
+    const timestamp = BASE + DAY / 2;
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+      transactionEvents: [],
+      cashflows: [
+        {
+          id: 'freedom-dividend-conflict', date: new Date(timestamp).toISOString(),
+          type: 'Dividend', amount: 5, currency: 'USD',
+          description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+        },
+        {
+          id: 'freedom-dividend-conflict', date: new Date(timestamp).toISOString(),
+          type: 'Dividend', amount: 6, currency: 'USD',
+          description: 'Revised quarterly dividend', raw: { operation_type: 'Dividend' }
+        }
+      ]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts).toMatchObject({
+      status: 'unavailable',
+      reason: expect.stringContaining('conflicting facts')
+    });
+  });
+
+  it('withholds income and cost totals when a broker row ambiguously matches multiple manual postings', () => {
+    const timestamp = BASE + DAY / 2;
+    const manualDividend = (id: string) => ({
+      id, schemaVersion: 1, type: 'dividend' as const,
+      cashflowCategory: 'dividend' as const, actor: { type: 'user' as const },
+      source: 'manual-cash-activity', effectiveAt: timestamp, recordedAt: timestamp,
+      currency: 'USD', grossAmount: 5, cashDelta: 5
+    });
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+      transactionEvents: [manualDividend('manual-dividend-a'), manualDividend('manual-dividend-b')],
+      cashflows: [{
+        id: 'freedom-dividend-ambiguous', date: new Date(timestamp).toISOString(),
+        type: 'Dividend', amount: 5, currency: 'USD',
+        description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+      }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts).toMatchObject({
+      status: 'unavailable',
+      reason: expect.stringContaining('ambiguous')
+    });
+  });
+
+
+  it.each([null, '', ' ', false])(
+    'does not coerce malformed broker income/cost amount %s to zero',
+    (amount) => {
+      const report = buildPortfolioPerformanceReport({
+        performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1010)],
+        transactionEvents: [],
+        cashflows: [{
+          id: 'freedom-invalid-dividend', date: new Date(BASE + DAY / 2).toISOString(),
+          type: 'Dividend', amount: amount as unknown as number, currency: 'USD',
+          description: 'Quarterly dividend', raw: { operation_type: 'Dividend' }
+        }]
+      } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+      expect(report.incomeCosts).toMatchObject({
+        status: 'unavailable',
+        reason: expect.stringContaining('invalid amount')
+      });
+    }
+  );
+
 });

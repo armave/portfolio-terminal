@@ -43,20 +43,35 @@ export function subscribeToPortfolioSelector<T>(
   store: PortfolioSubscriptionSource,
   isEqual: (previous: T, next: T) => boolean = Object.is
 ): () => void {
-  let current = selector(store.getState());
+  let current!: T;
+  let pending!: T;
+  let notificationVersion = 0;
+  let initializing = true;
+
+  // Register first, then read the initial state. Notifications delivered during
+  // the read are held until the snapshot is selected, closing the lost-update
+  // window without allowing a synchronous subscription replay to replace a newer
+  // getState() value.
   const unsubscribe = store.subscribe((state) => {
     const next = selector(state);
+    notificationVersion += 1;
+    if (initializing) {
+      pending = next;
+      return;
+    }
     if (isEqual(current, next)) return;
     current = next;
     listener(next);
   });
 
-  // Subscribe before replaying so no update can be lost between the initial
-  // selection and effect installation. If the initial listener throws, release
-  // the subscription before propagating the caller's error.
   try {
+    const versionBeforeRead = notificationVersion;
+    const initial = selector(store.getState());
+    current = notificationVersion > versionBeforeRead ? pending : initial;
+    initializing = false;
     listener(current);
   } catch (error) {
+    initializing = false;
     unsubscribe();
     throw error;
   }
