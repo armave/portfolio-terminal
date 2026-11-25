@@ -155,4 +155,41 @@ describe('broker execution history view state', () => {
     });
   });
 
+
+  it('ignores a superseded completion even after the newer foreground request has settled', () => {
+    const initial = createBrokerExecutionHistoryState([{ id: 'cached-sell' }], [], true);
+    const older = brokerExecutionHistoryReducer(initial, { type: 'refresh', requestId: 'manual-old' });
+    const newer = brokerExecutionHistoryReducer(older, { type: 'refresh', requestId: 'manual-new' });
+    const newerCompleted = brokerExecutionHistoryReducer(newer, {
+      type: 'success',
+      requestId: 'manual-new',
+      trades: [{ id: 'new-result' }]
+    });
+
+    expect(newerCompleted).toEqual({
+      trades: [{ id: 'new-result' }],
+      status: 'ready'
+    });
+    expect(brokerExecutionHistoryReducer(newerCompleted, {
+      type: 'success',
+      requestId: 'manual-old',
+      trades: [{ id: 'late-old-result' }]
+    })).toBe(newerCompleted);
+    expect(brokerExecutionHistoryReducer(newerCompleted, {
+      type: 'failure',
+      requestId: 'manual-old'
+    })).toBe(newerCompleted);
+
+    const newerFailed = brokerExecutionHistoryReducer(newer, {
+      type: 'failure',
+      requestId: 'manual-new'
+    });
+    expect(newerFailed).toMatchObject({ status: 'stale', trades: [{ id: 'cached-sell' }] });
+    expect(brokerExecutionHistoryReducer(newerFailed, {
+      type: 'success',
+      requestId: 'manual-old',
+      trades: [{ id: 'late-old-result' }]
+    })).toBe(newerFailed);
+  });
+
 });

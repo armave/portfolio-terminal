@@ -48,19 +48,24 @@ export function brokerExecutionHistoryReducer<T>(
       return next;
     }
     case 'success':
+      // An owned completion is accepted only while its exact request still
+      // owns the foreground refresh. This also rejects a late older response
+      // after the newer request has already settled and cleared activeRequestId.
+      if (action.requestId !== undefined && action.requestId !== state.activeRequestId) return state;
       // An unowned live/background update may improve visible rows but cannot
-      // settle a foreground refresh. A late completion from a superseded
-      // foreground request is ignored so it cannot replace newer request data.
+      // settle a foreground refresh.
       if (state.activeRequestId && !action.requestId) {
         return { ...state, trades: [...action.trades] };
       }
-      if (state.activeRequestId && action.requestId !== state.activeRequestId) return state;
       return {
         trades: [...action.trades],
         status: 'ready'
       };
     case 'failure':
-      if (state.activeRequestId && action.requestId !== state.activeRequestId) return state;
+      // A completion carrying an ID must still own the active request. Unowned
+      // background errors cannot settle an explicit foreground refresh either.
+      if (action.requestId !== undefined && action.requestId !== state.activeRequestId) return state;
+      if (state.activeRequestId && !action.requestId) return state;
       return {
         trades: state.trades,
         status: state.trades.length > 0 ? 'stale' : 'error'
