@@ -521,6 +521,10 @@ describe('cross-device financial header hierarchy', () => {
     expect(singleTickerView).toContain('data-tranche-details-trigger');
     expect(singleTickerView).toContain('aria-haspopup="dialog"');
     expect(singleTickerView).toContain('<TrancheDetailsModal');
+    const trancheModalProps = singleTickerView.slice(singleTickerView.indexOf('<TrancheDetailsModal'));
+    expect(trancheModalProps).not.toContain('positionShares=');
+    expect(trancheModalProps).not.toContain('totalInvested=');
+    expect(trancheModalProps).not.toContain('averageEntry=');
     expect(singleTickerView).not.toContain('boardTranchesOverflow');
     expect(singleTickerView).not.toContain('expandedTrancheTicker');
   });

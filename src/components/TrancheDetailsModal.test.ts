@@ -15,7 +15,6 @@ describe('tranche details rows', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
       key: 'lot-old',
-      number: 1,
       quantity: 5,
       entryPrice: 280,
       costBasis: 1400,
@@ -23,13 +22,26 @@ describe('tranche details rows', () => {
     });
     expect(rows[1]).toMatchObject({
       key: 'lot-new',
-      number: 2,
       quantity: 7,
       entryPrice: 295,
       costBasis: 2065,
       buyCommission: null
     });
     expect(tranches).toEqual(before);
+  });
+
+  it('keeps the dialog focused on lot facts and removes repeated position metrics', () => {
+    const source = readFileSync(new URL('./TrancheDetailsModal.tsx', import.meta.url), 'utf8');
+
+    expect(source).not.toContain('tranche-details-summary');
+    expect(source).not.toContain('Open purchase lots for {ticker}');
+    expect(source).not.toContain("translateText('Position shares'");
+    expect(source).not.toContain("translateText('Total Invested'");
+    expect(source).not.toContain("translateText('Average entry'");
+    expect(source).not.toContain("translateText('Tranche'");
+    expect(source).not.toContain('tranche-details-header-actions');
+    expect(source).toContain("rows.some((row) => row.buyCommission !== null)");
+    expect(source).toContain("data-label={translateText('Date', language)}");
   });
 
   it('keeps unresolved quantities and missing price or commission unavailable instead of zero', () => {
@@ -97,7 +109,11 @@ describe('tranche details rows', () => {
     expect(stylesheet).toContain('.tranche-details-backdrop');
     expect(stylesheet).toContain('.tranche-details-dialog');
     expect(stylesheet).toContain('.tranche-details-table-scroll');
-    expect(stylesheet).toContain('min-width: 46rem;');
+    expect(stylesheet).toContain('min-width: 35rem;');
     expect(stylesheet).toContain('@media (max-width: 640px)');
+    const modalStyles = stylesheet.slice(stylesheet.indexOf('/* Purchase tranche ledger modal'));
+    const mobileStyles = modalStyles.slice(modalStyles.indexOf('@media (max-width: 640px)'));
+    expect(mobileStyles).toContain('min-width: 32rem;');
+    expect(modalStyles).not.toContain('.tranche-details-summary');
   });
 });
