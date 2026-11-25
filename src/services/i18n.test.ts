@@ -53,6 +53,28 @@ describe('app localization', () => {
     ];
     for (const copy of cashActivityCopy) expect(translateText(copy, 'ru'), copy).not.toBe(copy);
   });
+  it('localizes Portfolio Health Center source statuses and reconciliation entry in Russian', () => {
+    const healthCopy = [
+      'Portfolio health',
+      'Source connectivity and confirmed update times. Quote quality and cloud synchronization are reported separately.',
+      'TradeNet account stream', 'Market quotes', 'Trade history', 'Cloud portfolio',
+      'Live', 'Waiting for snapshots', 'Connecting', 'REST fallback',
+      'Account and active orders confirmed on the live stream.',
+      'The socket is connected; waiting for validated account and order snapshots.',
+      'Opening the private account stream.',
+      'The stream is unavailable; REST snapshots are the fallback path.',
+      'Current', 'Delayed', 'Attention', 'Unavailable', 'No tracked holdings to price.',
+      'Provider-confirmed', 'Cached only', 'Not confirmed', 'Last provider refresh',
+      'Saved execution history is available, but no provider refresh is confirmed.',
+      'No provider refresh has been confirmed yet.', 'Last confirmed save',
+      'The last confirmed cloud save is retained after a sync error.',
+      'No confirmed cloud save yet.', 'Broker reconciliation',
+      'Compare broker executions, cashflows and quote evidence with app journal records. The review is read-only.',
+      'Review broker activity', 'Hide reconciliation', 'Open reconciliation'
+    ];
+    for (const copy of healthCopy) expect(translateText(copy, 'ru'), copy).not.toBe(copy);
+  });
+
   it('localizes cloud synchronization diagnostics in Russian', () => {
     const cloudDiagnosticCopy = [
       'Cloud synchronization diagnostics', 'Application API', 'Reachable', 'Cloud request', 'Last request confirmed', 'Last request failed', 'Request in progress', 'Cloud portfolio',

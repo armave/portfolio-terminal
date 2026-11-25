@@ -7,6 +7,7 @@ export type FreedomAccountStreamConnectionStatus =
 
 interface FreedomAccountStreamHealthState {
   sessionKey: string;
+  connectionStatus: FreedomAccountStreamConnectionStatus;
   connected: boolean;
   everConnected: boolean;
   portfolioReceived: boolean;
@@ -18,6 +19,7 @@ interface FreedomAccountStreamHealthState {
 
 const emptyState = (): FreedomAccountStreamHealthState => ({
   sessionKey: '',
+  connectionStatus: 'disconnected',
   connected: false,
   everConnected: false,
   portfolioReceived: false,
@@ -28,6 +30,26 @@ const emptyState = (): FreedomAccountStreamHealthState => ({
 });
 
 let state = emptyState();
+const healthListeners = new Set<(sessionKey: string) => void>();
+
+function notifyHealthListeners(): void {
+  healthListeners.forEach((listener) => listener(state.sessionKey));
+}
+
+/** Subscribe to in-memory stream health changes; no account data is included in the notification. */
+export function subscribeFreedomAccountStreamHealth(listener: (sessionKey: string) => void): () => void {
+  healthListeners.add(listener);
+  listener(state.sessionKey);
+  return () => healthListeners.delete(listener);
+}
+
+/** Return a defensive, account-session-scoped health snapshot for presentation. */
+export function getFreedomAccountStreamHealth(sessionKey: string): Readonly<FreedomAccountStreamHealthState> {
+  if (!sessionKey || state.sessionKey !== sessionKey) {
+    return { ...emptyState(), sessionKey };
+  }
+  return { ...state };
+}
 
 function ensureSession(sessionKey: string): void {
   if (state.sessionKey !== sessionKey) {
@@ -44,14 +66,24 @@ export function setFreedomAccountStreamStatus(
   ensureSession(sessionKey);
 
   if (status === 'connected') {
+    state.connectionStatus = 'connected';
     state.connected = true;
     state.everConnected = true;
     state.recoveryPending = false;
+    notifyHealthListeners();
+    return;
+  }
+
+  if (status === 'connecting') {
+    if (!state.connected) state.connectionStatus = 'connecting';
+    notifyHealthListeners();
     return;
   }
 
   if (status === 'reconnecting') {
     // Upstream recovery notices arrive over the still-open browser socket.
+    state.connectionStatus = 'reconnecting';
+    notifyHealthListeners();
     return;
   }
 
@@ -59,9 +91,11 @@ export function setFreedomAccountStreamStatus(
     // Only the connected -> disconnected transition opens a new recovery
     // window; repeated reconnect notices during one outage must not restart it.
     if (state.connected && state.everConnected) state.recoveryPending = true;
+    state.connectionStatus = 'disconnected';
     state.connected = false;
     state.portfolioReceived = false;
     state.ordersReceived = false;
+    notifyHealthListeners();
   }
 }
 
@@ -79,6 +113,7 @@ export function markFreedomAccountStreamSnapshot(
     state.ordersReceived = true;
     state.ordersRevision += 1;
   }
+  notifyHealthListeners();
 }
 
 export function hasFreedomAccountStreamSnapshot(
@@ -135,5 +170,7 @@ export function resolveFreedomAccountRefreshMode(sessionKey: string): FreedomAcc
 
 /** Test isolation and explicit account-session teardown. */
 export function resetFreedomAccountStreamHealth(): void {
+  const previousSessionKey = state.sessionKey;
   state = emptyState();
+  if (previousSessionKey) healthListeners.forEach((listener) => listener(previousSessionKey));
 }

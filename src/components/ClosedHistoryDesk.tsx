@@ -228,7 +228,7 @@ function ClosedTradeAllocationControls({
   );
 }
 
-export function ClosedHistoryDesk({ accountId, canViewCashActivity = false, isSessionCurrent = () => true, isWorkspaceSyncReady }: { accountId: string; canViewCashActivity?: boolean; isSessionCurrent?: () => boolean; isWorkspaceSyncReady: boolean }) {
+export function ClosedHistoryDesk({ accountId, canViewCashActivity = false, isSessionCurrent = () => true, isWorkspaceSyncReady, reconciliationRequestId = 0 }: { accountId: string; canViewCashActivity?: boolean; isSessionCurrent?: () => boolean; isWorkspaceSyncReady: boolean; reconciliationRequestId?: number }) {
   const state = usePortfolioSelector(selectTradesPortfolioState, areTradesPortfolioStatesEqual);
   const [brokerExecutionHistory, dispatchBrokerExecutionHistory] = useReducer(
     brokerExecutionHistoryReducer<FreedomExecutedTrade>,
@@ -256,6 +256,14 @@ export function ClosedHistoryDesk({ accountId, canViewCashActivity = false, isSe
       .then(module => setBrokerReconciliationView(() => module.BrokerTransactionReconciliation))
       .catch(() => setBrokerReconciliationOpen(false));
   };
+  useEffect(() => {
+    if (reconciliationRequestId <= 0) return;
+    setBrokerReconciliationOpen(true);
+    if (BrokerReconciliationView) return;
+    void import('./BrokerTransactionReconciliation')
+      .then(module => setBrokerReconciliationView(() => module.BrokerTransactionReconciliation))
+      .catch(() => setBrokerReconciliationOpen(false));
+  }, [reconciliationRequestId]);
   const [cashflowSyncMessage, setCashflowSyncMessage] = useState('');
   const [cloudHistoryWarning, setCloudHistoryWarning] = useState('');
   const [cloudHistoryRetrying, setCloudHistoryRetrying] = useState(false);
@@ -688,9 +696,9 @@ export function ClosedHistoryDesk({ accountId, canViewCashActivity = false, isSe
             ? setBrokerReconciliationOpen(false)
             : void openBrokerReconciliation()}
         >
-          <span>{getAppLanguage() === 'ru' ? 'Сверить активность брокера' : 'Reconcile broker activity'}</span>
+          <span>{translateText('Reconcile broker activity', getAppLanguage())}</span>
           <span class="text-xs text-slate-400">
-            {getAppLanguage() === 'ru' ? (brokerReconciliationOpen ? 'Скрыть сверку' : 'Открыть сверку') : (brokerReconciliationOpen ? 'Hide reconciliation' : 'Open reconciliation')}
+            {translateText(brokerReconciliationOpen ? 'Hide reconciliation' : 'Open reconciliation', getAppLanguage())}
           </span>
         </button>
         {brokerReconciliationOpen && BrokerReconciliationView && (

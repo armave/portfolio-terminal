@@ -28,6 +28,7 @@ This directory contains maintained product and engineering references, current o
 - [Trades history UX](trades-history-ux.md) — broker freshness, refresh semantics, sorting, and financial data-quality presentation.
 - [Trades history synchronization ownership](trades-history-sync-ownership.md) — account/session-scoped reconciliation, coalescing, request-owned progress, checkpoint safety, and persistence boundaries.
 - [Compare Exits UX](exit-comparison-ux.md) — scenario cost breakdown, quote provenance, signed cash/debt interpretation, exact dates, and responsive results presentation.
+- [Portfolio Health Center and reconciliation entry](portfolio-health-center-ux.md) — source-specific freshness/status semantics and the direct entry to read-only broker reconciliation.
 - [Combined Margin workspace UX](combined-workspace-ux.md) — KPI hierarchy, position comparison, risk data quality, research context and disclosures.
 
 ## Security and release quality

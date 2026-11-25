@@ -43,6 +43,11 @@ const PortfolioPerformancePanel = lazy(() =>
     default: memo(PortfolioPerformancePanel)
   }))
 );
+const PortfolioHealthCenter = lazy(() =>
+  import('./components/PortfolioHealthCenter').then(({ PortfolioHealthCenter }) => ({
+    default: memo(PortfolioHealthCenter)
+  }))
+);
 const MemoProjectionsTable = memo(ProjectionsTable);
 
 const ClosedHistoryDesk = lazy(() =>
@@ -131,6 +136,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
   const [hasOpenedGuestHistory, setHasOpenedGuestHistory] = useState(false);
   const [hasOpenedCashCushion, setHasOpenedCashCushion] = useState(false);
   const [hasOpenedSettings, setHasOpenedSettings] = useState(false);
+  const [reconciliationRequestId, setReconciliationRequestId] = useState(0);
   const shouldRenderClosedHistory = hasOpenedClosedHistory || activeDeskView === 'CLOSED_HISTORY';
   const shouldRenderCashCushion = hasOpenedCashCushion ||
     activeDeskView === 'CASH_CUSHION' ||
@@ -496,6 +502,20 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 <div id="boardDailyMove" class={showDailyMove ? "" : "hidden"}></div>
               </div>
 
+              {permissions.isAdmin && activeDeskView === 'COMBINED' && (
+                <Suspense fallback={<DeskLoading title={translateText('Preparing portfolio health', getAppLanguage())} message={translateText('Loading source status…', getAppLanguage())} accent="cyan" />}>
+                  <PortfolioHealthCenter
+                    accountId={currentUser?.id || ''}
+                    cloudStatus={cloudStatus}
+                    cloudSyncStatus={cloudSyncStatus}
+                    onOpenReconciliation={() => {
+                      setReconciliationRequestId((current) => current + 1);
+                      emitUiEvent('portfolio:set-active-view', { view: 'CLOSED_HISTORY' });
+                    }}
+                  />
+                </Suspense>
+              )}
+
               <div
                 id="portfolioMetricsGrid"
                 aria-label={translateText('Portfolio summary metrics', getAppLanguage())}
@@ -629,6 +649,7 @@ export function App({ onSaveGatewaySecret }: AppProps) {
                 canViewCashActivity={currentUser?.role === 'admin'}
                 isSessionCurrent={isAccountSessionCurrent}
                 isWorkspaceSyncReady={workspaceSyncReady}
+                reconciliationRequestId={reconciliationRequestId}
               />
             </Suspense></div>
             : null}
