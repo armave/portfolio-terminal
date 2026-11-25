@@ -82,7 +82,17 @@ function mapExternalCashFlows(
         event.effectiveAt <= startAt || event.effectiveAt > endAt) continue;
 
     if (unsupported.has(event.type)) {
-      const amount = Math.abs(Number(event.externalCashFlowAmount ?? event.grossAmount ?? event.cashDelta ?? 0));
+      const amountValue = event.externalCashFlowAmount ?? event.grossAmount ?? event.cashDelta;
+      const amount = finiteNumber(amountValue);
+      // A recorded cash transfer/adjustment without a valid amount is not a
+      // verified zero movement. Keep performance unavailable until its source
+      // evidence is repaired rather than silently omitting the event.
+      if (['cash.transfer', 'cash.adjustment', 'margin.adjustment'].includes(event.type) && amount === null) {
+        return {
+          reason: 'A cash transfer or balance adjustment is missing a valid amount; performance is unavailable until its source evidence is repaired.',
+          warnings: []
+        };
+      }
       // Tracking-only cash-holding changes alter the valuation buckets without
       // recording a modeled cash settlement. This includes additions with no
       // entry price, so amount-based checks alone would silently turn them into
@@ -92,7 +102,7 @@ function mapExternalCashFlows(
         typeof event.cashHoldingQuantityDelta === 'number' &&
         Number.isFinite(event.cashHoldingQuantityDelta) &&
         event.cashHoldingQuantityDelta !== 0;
-      if (amount > 0 || hasUnmodeledCashHoldingQuantityChange ||
+      if ((amount !== null && Math.abs(amount) > 0) || hasUnmodeledCashHoldingQuantityChange ||
           ['portfolio.reset', 'history.correction', 'portfolio.reconciliation', 'position.adjustment', 'margin.adjustment', 'correction'].includes(event.type)) {
         return { reason: 'The transaction history contains an adjustment or correction that cannot yet be classified as an external investment flow.', warnings: [] };
       }

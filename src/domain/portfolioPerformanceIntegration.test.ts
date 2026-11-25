@@ -442,6 +442,25 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(report.reason).toContain('cashflow-history baseline');
   });
 
+  it.each([undefined, null, '', ' ', false])(
+    'does not treat a cash transfer with missing or malformed amount %s as zero',
+    (amount) => {
+      const report = buildPortfolioPerformanceReport({
+        performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1100)],
+        transactionEvents: [{
+          id: 'cash-transfer-without-amount', schemaVersion: 1, type: 'cash.transfer',
+          actor: { type: 'user' }, source: 'manual-cash-activity',
+          effectiveAt: BASE + DAY / 2, recordedAt: BASE + DAY / 2,
+          currency: 'USD', cashDelta: amount as unknown as number
+        }],
+        cashflows: []
+      } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+      expect(report.status).toBe('unavailable');
+      expect(report.reason).toBe("A cash transfer or balance adjustment is missing a valid amount; performance is unavailable until its source evidence is repaired.");
+    }
+  );
+
   it('refuses ambiguous adjustments and mixed-currency external flows', () => {
     const baseState = {
       performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 1100)],

@@ -40,6 +40,10 @@ describe('Portfolio Performance panel integration', () => {
     )).not.toContain('The same stable broker cashflow ID');
     expect(translatePortfolioPerformanceText('An income or cost cashflow has an invalid amount.', 'ru'))
       .not.toBe('An income or cost cashflow has an invalid amount.');
+    expect(translatePortfolioPerformanceText(
+      "A cash transfer or balance adjustment is missing a valid amount; performance is unavailable until its source evidence is repaired.",
+      'ru'
+    )).not.toBe("A cash transfer or balance adjustment is missing a valid amount; performance is unavailable until its source evidence is repaired.");
     expect(translatePortfolioPerformanceText('Portfolio performance', 'en')).toBe('Portfolio performance');
   });
 

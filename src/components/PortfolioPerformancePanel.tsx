@@ -43,6 +43,7 @@ const PERFORMANCE_RU_COPY: Record<string, string> = {
   "A broker income/cost row conflicts with the category or event type of a matching manual Cash Activity posting.": "Категория или тип операции брокера противоречит соответствующей ручной записи движения средств.",
   "The same stable broker cashflow ID contains conflicting facts; income and costs are unavailable until its revision is reconciled.": "Один и тот же стабильный идентификатор денежной операции брокера содержит противоречивые данные. До сверки версии доходы и расходы недоступны.",
   "An income or cost cashflow has an invalid amount.": "Операция дохода или расхода содержит некорректную сумму.",
+  "A cash transfer or balance adjustment is missing a valid amount; performance is unavailable until its source evidence is repaired.": "В переводе денежных средств или корректировке баланса отсутствует корректная сумма. До восстановления исходных данных расчёт доходности недоступен.",
   "A trade event uses a different or unknown currency; attribution is unavailable.": "Сделка указана в другой или неизвестной валюте. Распределение доходности недоступно.",
   "A trade event has an explicit fee currency that differs from the portfolio currency; attribution is unavailable.": "Валюта комиссии сделки отличается от валюты портфеля. Распределение доходности недоступно.",
   "A sale journal event is missing valid net proceeds; sale attribution is withheld.": "В журнале продажи отсутствуют подтверждённые чистые поступления. Распределение результата продажи не выполняется.",
