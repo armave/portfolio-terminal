@@ -5,8 +5,8 @@ function readSource(): string {
   return readFileSync(new URL('./CashActivityLedger.tsx', import.meta.url), 'utf8');
 }
 
-describe('Cash Activity shared table', () => {
-  it('renders normalized cash records in the shared responsive and paginated table pattern', () => {
+describe('Cash Activity read-only ledger', () => {
+  it('renders normalized source records in the shared responsive and paginated table pattern', () => {
     const source = readSource();
 
     expect(source).toContain("useTablePagination('cash-activity', filteredRows.length, 10)");
@@ -21,17 +21,49 @@ describe('Cash Activity shared table', () => {
     expect(source).not.toContain('<article key={row.id}');
   });
 
-  it('resets to the first page when search, category, or period filters change', () => {
+  it('does not expose a manual cash posting form or store mutation', () => {
     const source = readSource();
-    expect(source.split('pagination.setPage(1)').length - 1).toBe(3);
+    expect(source).not.toContain('<form');
+    expect(source).not.toContain('postCashActivity');
+    expect(source).not.toContain('ManualCashActivity');
+    expect(source).not.toContain('Record manual cash activity');
+    expect(source).not.toContain('portfolioStore');
+  });
+
+  it('filters by search, category, period, source and data quality, and can clear filters', () => {
+    const source = readSource();
+    expect(source).toContain('row.id, row.description');
+    expect(source).toContain('sourceFilter');
+    expect(source).toContain('qualityFilter');
+    expect(source).toContain("translateText('All sources'");
+    expect(source).toContain("translateText('All qualities'");
+    expect(source.match(/pagination\.setPage\(1\)/g)).toHaveLength(6);
+    expect(source).toContain("translateText('Clear filters'");
+  });
+
+  it('keeps account balances separate from filtered, verified USD cashflow summaries', () => {
+    const source = readSource();
+    expect(source).toContain("translateText('Current available USD cash'");
+    expect(source).toContain("translateText('Current margin debt'");
+    expect(source).toContain("translateText('Filtered verified inflows · USD'");
+    expect(source).toContain("translateText('Filtered verified outflows · USD'");
+    expect(source).toContain("translateText('Filtered net USD movement'");
+    expect(source).toContain("row.quality === 'verified' && row.currency === 'USD'");
+  });
+
+  it('retains historical manual rows as provisional and excludes them from verified summaries', () => {
+    const source = readSource();
+    expect(source).toContain("event.source === 'manual-cash-activity'");
+    expect(source).toContain("quality: event.source === 'manual-cash-activity'");
+    expect(source).toContain("'Historical manual entry · unverified'");
+    expect(source).toContain("row.quality !== 'verified'");
   });
 
   it('retains the distinction between cash movement and debt-only margin interest', () => {
     const source = readSource();
     expect(source).toContain('const signedDisplay = row.debtOnly');
     expect(source).toContain(': row.signedCash;');
-    expect(source).toContain("translateText('Debt only', getAppLanguage())");
-    expect(source).toContain("translateText('Cash / debt impact', getAppLanguage())");
-    expect(source).toContain("row.quality !== 'verified'");
+    expect(source).toContain("translateText('Debt only'");
+    expect(source).toContain("translateText('Cash / debt impact'");
   });
 });
