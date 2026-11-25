@@ -134,4 +134,38 @@ describe('portfolio subscription adapters', () => {
     store.setActiveView('SETTINGS');
     expect(listener).toHaveBeenCalledTimes(2);
   });
+
+  it('subscribes before reading the initial selector so an intervening state change is not lost', () => {
+    const base = new PortfolioStore().getState();
+    let current = base;
+    let stateListener: ((state: typeof base) => void) | null = null;
+    let mutateDuringFirstRead = true;
+    const raceStore = {
+      getState: () => {
+        const observed = current;
+        if (mutateDuringFirstRead) {
+          mutateDuringFirstRead = false;
+          current = { ...current, balance: 250 };
+          stateListener?.(current);
+        }
+        return observed;
+      },
+      subscribe: (listener: (state: typeof base) => void) => {
+        stateListener = listener;
+        return () => { stateListener = null; };
+      }
+    };
+    const listener = vi.fn();
+
+    const unsubscribe = subscribeToPortfolioSelector(
+      (state) => state.balance,
+      listener,
+      raceStore
+    );
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenLastCalledWith(250);
+    unsubscribe();
+  });
+
 });
