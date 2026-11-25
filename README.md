@@ -13,7 +13,7 @@ It is **not** a broker connection, order-entry system, source of official accoun
 
 * **Cash Cushion & Non-Margin Holdings:** Tracks cash balance and equity holdings separately from leveraged margin positions.
 
-* **Cash Activity Ledger:** Reviews broker-reported deposits, withdrawals, income and costs beside app-owned cash activity. Manual USD postings use audited store commands; broker cashflow imports remain evidence-only.
+* **Cash Activity Ledger:** A read-only review of broker-reported deposits, withdrawals, income and costs alongside existing app journal evidence. Broker cashflow imports remain evidence-only; the ledger cannot add manual cash activity.
 
 
 * **Broker Financial Engine:** Models daily margin interest compounding, rollover timings, trade commissions (flat, per-share, or value percentage), account equity, break-even targets, and stop-out risk.
@@ -89,7 +89,7 @@ npm run build
 1. **Configure Broker Rules:** Open **Broker assumptions & quote symbols**. Configure your annual margin borrowing rate, day-count convention (360 vs. 365), daily rollover cutoff (Armenia Time), maintenance equity ratio, stop-out threshold, and commission minimums/rates.
 
 
-2. **Set Cash Balance & Holdings:** Enter your signed cash balance in the Cash panel (positive denotes available cash; negative denotes broker debt). Log holdings via inline table rows. Admins can review broker and manual cash movements in **Trades → Cash Activity**.
+2. **Review Account Balances & Holdings:** Review the broker-sourced account balance and tracked holdings. Admins can inspect broker cash movements and existing app journal history in the read-only **Trades → Cash Activity** view.
 
 
 3. **Monitor Active Positions:** Use ticker tabs to inspect tranches, unrealized profit/loss, daily carry costs, and breakeven horizons.
