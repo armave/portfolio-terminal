@@ -300,6 +300,95 @@ function mapIncomeCostAdjustments(
 ): AdapterResult<PerformanceAdjustment[]> {
   const adjustments: PerformanceAdjustment[] = [];
   const warnings: string[] = [];
+  const stableBrokerObservations = new Map<string, string>();
+  const matchedManualActivityIds = new Set<string>();
+  const maxManualMatchTimeMs = 86_400_000;
+  const manualMatchAmountTolerance = 0.01;
+
+  const supportedCategories = new Set([
+    'dividend', 'interest_income', 'commission', 'fee', 'tax', 'margin_interest', 'unclassified'
+  ]);
+  const eventCategory = (event: PortfolioTransactionEvent) =>
+    event.cashflowCategory ?? (
+      event.type === 'dividend' ? 'dividend' :
+      event.type === 'interest.income' ? 'interest_income' :
+      event.type === 'margin.interest' ? 'margin_interest' :
+      event.type === 'fee' ? 'fee' : null
+    );
+
+  // Manual Cash Activity entries have already changed canonical cash/debt. When
+  // the broker later reports the same movement, the provider row is the stronger
+  // evidence for explanatory income/cost reporting; include it once, not twice.
+  const manualActivity = events.flatMap(event => {
+    if (!event || event.source !== 'manual-cash-activity' || event.actor?.type === 'broker' ||
+        event.effectiveAt <= startAt || event.effectiveAt > endAt) return [];
+    const category = eventCategory(event);
+    if (!category || !supportedCategories.has(category) || category === 'unclassified') return [];
+    const rawAmount = category === 'margin_interest'
+      ? event.financingCost ?? event.marginDebtDelta ?? event.grossAmount
+      : event.grossAmount ?? event.externalCashFlowAmount ?? event.cashDelta ?? event.fees;
+    const amount = finiteNumber(rawAmount);
+    const eventCurrency = currencyCode(event.currency);
+    if (amount === null || eventCurrency !== currency) return [];
+    const cashDelta = finiteNumber(event.cashDelta);
+    const expense = ['commission', 'fee', 'tax', 'margin_interest'].includes(category);
+    const signedAmount = category === 'margin_interest'
+      ? -Math.abs(amount)
+      : cashDelta !== null
+        ? Math.sign(cashDelta) * Math.abs(amount)
+        : expense ? -Math.abs(amount) : Math.abs(amount);
+    return [{
+      event,
+      category,
+      amount: Math.abs(amount),
+      currency: eventCurrency,
+      signedAmount
+    }];
+  });
+
+  const matchManualActivity = (
+    eventType: PortfolioTransactionEventType,
+    category: import('../types/portfolioTransaction').CashflowCategory,
+    signedAmount: number,
+    timestamp: number,
+    sourceCurrency: string | null
+  ): { eventId?: string; reason?: string } => {
+    if (!sourceCurrency) return {};
+    const candidates = manualActivity
+      .filter(candidate =>
+        !matchedManualActivityIds.has(candidate.event.id) &&
+        (candidate.event.type === eventType || candidate.category === category) &&
+        candidate.currency === sourceCurrency &&
+        Math.abs(candidate.amount - Math.abs(signedAmount)) <= manualMatchAmountTolerance &&
+        Math.sign(candidate.signedAmount) === Math.sign(signedAmount) &&
+        Math.abs(candidate.event.effectiveAt - timestamp) <= maxManualMatchTimeMs
+      )
+      .map(candidate => ({
+        candidate,
+        timeDelta: Math.abs(candidate.event.effectiveAt - timestamp)
+      }))
+      .sort((left, right) =>
+        left.timeDelta - right.timeDelta ||
+        left.candidate.event.id.localeCompare(right.candidate.event.id)
+      );
+    if (candidates.length === 0) return {};
+    const nearestDelta = candidates[0].timeDelta;
+    const tied = candidates.filter(candidate => Math.abs(candidate.timeDelta - nearestDelta) <= 1e-9);
+    if (tied.length > 1) {
+      return {
+        reason: 'A broker income/cost row ambiguously matches multiple manual Cash Activity postings; the summary is withheld until the records are reviewed.'
+      };
+    }
+    const selected = candidates[0].candidate;
+    if (selected.event.type !== eventType || selected.category !== category) {
+      return {
+        reason: 'A broker income/cost row conflicts with the category or event type of a matching manual Cash Activity posting.'
+      };
+    }
+    matchedManualActivityIds.add(selected.event.id);
+    return { eventId: selected.event.id };
+  };
+
   const append = (
     timestamp: number,
     category: import('../types/portfolioTransaction').CashflowCategory,
@@ -335,27 +424,63 @@ function mapIncomeCostAdjustments(
     const timestamp = parseCashflowTimestamp(row.date);
     const classification = classifyCashflow({ type: row.type, description: row.description, raw: row.raw || {} });
     if (timestamp === null) {
-      if (['dividend', 'interest_income', 'commission', 'fee', 'tax', 'margin_interest', 'unclassified'].includes(classification.category)) {
+      if (supportedCategories.has(classification.category)) {
         return { reason: 'An income/cost cashflow is missing a verifiable timestamp.', warnings: [] };
       }
       continue;
     }
     if (timestamp <= startAt || timestamp > endAt) continue;
-    if (!['dividend', 'interest_income', 'commission', 'fee', 'tax', 'margin_interest', 'unclassified'].includes(classification.category)) continue;
-    const quality = row.identityQuality === 'fallback' || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id)
-      ? 'provisional'
-      : typeof row.id === 'string' && row.id.startsWith('freedom-') ? 'current' : 'provisional';
+    if (!supportedCategories.has(classification.category)) continue;
+
     const classificationText = [row.type, row.description, ...Object.values(row.raw || {})].filter(Boolean).join(' ');
     const signedAmount = normalizeClassifiedCashflowAmount(classification.category, Number(row.amount), classificationText);
+    const sourceCurrency = currencyCode(row.currency);
+    const rowId = typeof row.id === 'string' ? row.id.trim() : '';
+    const fallbackIdentity = row.identityQuality === 'fallback' ||
+      /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(rowId) ||
+      /^anonymous:/i.test(rowId);
+
+    // A repeated provider operation ID is one observation when all normalized
+    // facts agree. Conflicting facts under one stable ID make the income/cost
+    // summary incomplete rather than allowing both revisions to be counted.
+    if (rowId && !fallbackIdentity) {
+      const observation = JSON.stringify([classification.category, signedAmount, sourceCurrency, timestamp]);
+      const previous = stableBrokerObservations.get(rowId);
+      if (previous !== undefined) {
+        if (previous !== observation) {
+          return {
+            reason: 'The same stable broker cashflow ID contains conflicting facts; income and costs are unavailable until its revision is reconciled.',
+            warnings: []
+          };
+        }
+        continue;
+      }
+      stableBrokerObservations.set(rowId, observation);
+    }
+
+    const manualMatch = matchManualActivity(
+      classification.eventType || 'fee',
+      classification.category,
+      signedAmount,
+      timestamp,
+      sourceCurrency
+    );
+    if (manualMatch.reason) return { reason: manualMatch.reason, warnings: [...new Set(warnings)] };
+
+    const quality = row.identityQuality === 'fallback' || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(rowId)
+      ? 'provisional'
+      : rowId.startsWith('freedom-') ? 'current' : 'provisional';
     const refund = ['fee', 'commission', 'tax', 'margin_interest'].includes(classification.category) && signedAmount > 0;
     const reason = append(timestamp, classification.category, row.amount, row.currency, quality, refund);
     if (reason) return { reason, warnings: [...new Set(warnings)] };
   }
 
   // Broker journal copies are audit evidence; their financial presentation is
-  // sourced from cashflows above. Include only app/system-owned income/costs here.
+  // sourced from cashflows above. Matched manual copies are also omitted because
+  // the broker row already represents the same external activity.
   for (const event of events) {
-    if (!event || event.actor.type === 'broker' || event.effectiveAt <= startAt || event.effectiveAt > endAt) continue;
+    if (!event || event.actor?.type === 'broker' || matchedManualActivityIds.has(event.id) ||
+        event.effectiveAt <= startAt || event.effectiveAt > endAt) continue;
     if (!['dividend', 'interest.income', 'fee', 'margin.interest'].includes(event.type)) continue;
     const category = event.cashflowCategory ?? (
       event.type === 'dividend' ? 'dividend' :
@@ -373,7 +498,6 @@ function mapIncomeCostAdjustments(
 
   return { value: adjustments, warnings: [...new Set(warnings)] };
 }
-
 export function buildPortfolioPerformanceReport(
   state: Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>
 ): PortfolioPerformanceReport {

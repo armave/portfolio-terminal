@@ -42,7 +42,9 @@ export function brokerExecutionHistoryReducer<T>(
         status: state.trades.length > 0 ? 'refreshing' : 'loading'
       };
       if (action.requestId) next.activeRequestId = action.requestId;
-      else delete next.activeRequestId;
+      // A background refresh without an owner must not clear a foreground
+      // request's identity; only that request may settle its loader.
+      else if (!state.activeRequestId) delete next.activeRequestId;
       return next;
     }
     case 'success':

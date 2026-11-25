@@ -60,7 +60,9 @@ Manual margin interest is a deliberate exception to cash-paid costs: it does not
 
 Broker cashflow reconciliation compares both journal event type and the shared category. That prevents two records that both use the generic `fee` event type (for example, tax vs. commission) from being treated as the same cashflow solely because their amount/date/currency happen to match.
 
-The income/cost summary reads normalized broker cashflows plus app/system-owned income/cost events. It skips broker journal copies to avoid duplicates. Credited interest is shown separately from margin interest. These figures are explanatory and are not added a second time to TWR/MWR. Deposits and withdrawals remain the external performance flows consumed by the existing performance adapter.
+The income/cost summary reads normalized broker cashflows plus app/system-owned income/cost events. It skips broker journal copies to avoid duplicates. When a broker row uniquely matches an app-owned manual Cash Activity posting by event type/category, currency, signed amount (within USD 0.01), and timestamp (within 24 hours), the broker row is preferred and the manual copy is omitted. Equally close manual candidates or a category/type conflict with a matching manual posting withhold the income/cost summary rather than guessing. Identical normalized facts under one stable broker cashflow ID are counted once; conflicting facts under that ID make the summary unavailable. Fallback identities remain distinct and provisional rather than being collapsed by appearance.
+
+Credited interest is shown separately from margin interest. For margin-interest reconciliation, the comparison uses financing/debt capitalization evidence rather than the intentionally zero account-cash delta. These figures are explanatory and are not added a second time to TWR/MWR. Deposits and withdrawals remain the external performance flows consumed by the existing performance adapter.
 
 ## Data quality and limitations
 

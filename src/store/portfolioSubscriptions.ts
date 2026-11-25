@@ -43,20 +43,33 @@ export function subscribeToPortfolioSelector<T>(
   store: PortfolioSubscriptionSource,
   isEqual: (previous: T, next: T) => boolean = Object.is
 ): () => void {
-  let current = selector(store.getState());
+  let current!: T;
+  let pending!: T;
+  let hasPending = false;
+  let initializing = true;
+
+  // Register first, then read the initial state. Any synchronous update delivered
+  // during registration is held until the initial value is selected, closing the
+  // read-before-subscribe gap without publishing an intermediate stale selection.
   const unsubscribe = store.subscribe((state) => {
     const next = selector(state);
+    if (initializing) {
+      pending = next;
+      hasPending = true;
+      return;
+    }
     if (isEqual(current, next)) return;
     current = next;
     listener(next);
   });
 
-  // Subscribe before replaying so no update can be lost between the initial
-  // selection and effect installation. If the initial listener throws, release
-  // the subscription before propagating the caller's error.
   try {
+    const initial = selector(store.getState());
+    current = hasPending ? pending : initial;
+    initializing = false;
     listener(current);
   } catch (error) {
+    initializing = false;
     unsubscribe();
     throw error;
   }

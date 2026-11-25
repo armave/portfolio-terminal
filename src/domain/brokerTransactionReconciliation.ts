@@ -236,8 +236,11 @@ function normalizeCashflow(row: BrokerCashflow): NormalizedCashflow | null {
     amount: signedAmount, currency: currency(row.currency), at: timestamp(row.date) };
 }
 function eventAmount(event: PortfolioTransactionEvent): number | null {
-  return number(event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
-    (event.type === 'fee' ? event.fees : event.type === 'margin.interest' ? event.financingCost : undefined));
+  const amount = event.type === 'margin.interest'
+    ? event.externalCashFlowAmount ?? event.financingCost ?? event.marginDebtDelta ?? event.grossAmount ?? event.cashDelta
+    : event.externalCashFlowAmount ?? event.cashDelta ?? event.grossAmount ?? event.netAmount ??
+      (event.type === 'fee' ? event.fees : undefined);
+  return number(amount);
 }
 
 interface UnresolvedCashAdjustmentReversal {
