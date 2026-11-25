@@ -371,7 +371,6 @@ function mapIncomeCostAdjustments(
         (candidate.event.type === eventType || candidate.category === category) &&
         candidate.currency === sourceCurrency &&
         Math.abs(candidate.amount - Math.abs(signedAmount)) <= manualMatchAmountTolerance &&
-        Math.sign(candidate.signedAmount) === Math.sign(signedAmount) &&
         Math.abs(candidate.event.effectiveAt - timestamp) <= maxManualMatchTimeMs
       )
       .map(candidate => ({
@@ -394,6 +393,11 @@ function mapIncomeCostAdjustments(
     if (selected.event.type !== eventType || selected.category !== category) {
       return {
         reason: 'A broker income/cost row conflicts with the category or event type of a matching manual Cash Activity posting.'
+      };
+    }
+    if (Math.sign(selected.signedAmount) !== Math.sign(signedAmount)) {
+      return {
+        reason: 'A broker income/cost row has the opposite signed movement from a matching manual Cash Activity posting; the summary is withheld until the records are reviewed.'
       };
     }
     matchedManualActivityIds.add(selected.event.id);

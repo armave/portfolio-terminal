@@ -533,6 +533,31 @@ describe('buildPortfolioPerformanceReport', () => {
     }
   });
 
+
+  it('withholds income and cost totals when broker and manual activity directions conflict', () => {
+    const timestamp = BASE + DAY / 2;
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000), snapshot(BASE + DAY, 995)],
+      transactionEvents: [{
+        id: 'manual-commission-outflow', schemaVersion: 1, type: 'fee',
+        cashflowCategory: 'commission', actor: { type: 'user' },
+        source: 'manual-cash-activity', effectiveAt: timestamp, recordedAt: timestamp,
+        currency: 'USD', grossAmount: 5, cashDelta: -5
+      }],
+      cashflows: [{
+        id: 'freedom-commission-refund', date: new Date(timestamp).toISOString(),
+        type: 'Commission', amount: 5, currency: 'USD',
+        description: 'Commission refund', raw: { operation_type: 'Commission refund' }
+      }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.incomeCosts).toMatchObject({
+      status: 'unavailable',
+      reason: expect.stringContaining('opposite signed movement')
+    });
+  });
+
+
   it('withholds income and cost totals when one stable broker cashflow ID has conflicting facts', () => {
     const timestamp = BASE + DAY / 2;
     const report = buildPortfolioPerformanceReport({

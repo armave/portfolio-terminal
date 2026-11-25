@@ -35,6 +35,10 @@ describe('Portfolio Performance panel integration', () => {
       'ru'
     )).not.toContain('A broker income/cost row');
     expect(translatePortfolioPerformanceText(
+      "A broker income/cost row has the opposite signed movement from a matching manual Cash Activity posting; the summary is withheld until the records are reviewed.",
+      'ru'
+    )).not.toBe("A broker income/cost row has the opposite signed movement from a matching manual Cash Activity posting; the summary is withheld until the records are reviewed.");
+    expect(translatePortfolioPerformanceText(
       'The same stable broker cashflow ID contains conflicting facts; income and costs are unavailable until its revision is reconciled.',
       'ru'
     )).not.toContain('The same stable broker cashflow ID');
