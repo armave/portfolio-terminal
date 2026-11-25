@@ -31,7 +31,7 @@ Automatic synchronization is mandatory for authenticated accounts. Settings stor
 
 ## Cash Activity role boundary
 
-Cash Activity and its manual-entry form are rendered only in the administrator Trades desk. Broker cashflows remain audit evidence; manual USD activity uses the existing shared portfolio persistence path. This is not broker-side writeback. Guest sessions continue to use the guest holdings/history projection and do not load the administrator Closed History record.
+Cash Activity is a read-only ledger rendered only in the administrator Trades desk. No manual cash activity can be added from the view. Broker cashflows remain audit evidence, and previously saved app-owned journal entries remain visible as historical records. Guest sessions continue to use the guest holdings/history projection and do not load the administrator Closed History record.
 
 ## Visibility and account isolation
 
