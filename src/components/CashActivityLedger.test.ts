@@ -48,7 +48,8 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain("translateText('Filtered verified inflows · USD'");
     expect(source).toContain("translateText('Filtered verified outflows · USD'");
     expect(source).toContain("translateText('Filtered net USD movement'");
-    expect(source).toContain("row.quality === 'verified' && row.currency === 'USD'");
+    expect(source).toContain('Math.max(0, -snapshot.balance)');
+    expect(source).toContain("row.quality === 'verified' && row.currency === 'USD' && !row.debtOnly");
   });
 
   it('retains historical manual rows as provisional and excludes them from verified summaries', () => {
