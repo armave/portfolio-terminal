@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   consumeFreedomAccountStreamRecovery,
+  getFreedomAccountStreamHealth,
   getFreedomAccountStreamSnapshotRevision,
   hasFreedomAccountStreamSnapshot,
   isFreedomAccountStreamHealthy,
   markFreedomAccountStreamSnapshot,
   resetFreedomAccountStreamHealth,
   resolveFreedomAccountRefreshMode,
+  subscribeFreedomAccountStreamHealth,
   setFreedomAccountStreamStatus
 } from './freedomAccountStreamHealth';
 
@@ -102,6 +104,24 @@ describe('Freedom account stream health', () => {
 
   it('does not activate broker refresh work without an account session', () => {
     expect(resolveFreedomAccountRefreshMode('')).toBe('inactive');
+  });
+
+  it('publishes session-scoped connection and validated-channel state for UX', () => {
+    const session = 'admin:account-1';
+    const notifications: string[] = [];
+    const unsubscribe = subscribeFreedomAccountStreamHealth((key) => notifications.push(key));
+    setFreedomAccountStreamStatus(session, 'connecting');
+    expect(getFreedomAccountStreamHealth(session).connectionStatus).toBe('connecting');
+    setFreedomAccountStreamStatus(session, 'connected');
+    markFreedomAccountStreamSnapshot(session, 'portfolio');
+    expect(getFreedomAccountStreamHealth(session).portfolioReceived).toBe(true);
+    expect(getFreedomAccountStreamHealth(session).ordersReceived).toBe(false);
+    markFreedomAccountStreamSnapshot(session, 'orders');
+    expect(getFreedomAccountStreamHealth(session).connected).toBe(true);
+    expect(getFreedomAccountStreamHealth(session).ordersReceived).toBe(true);
+    expect(getFreedomAccountStreamHealth('admin:account-2').connected).toBe(false);
+    expect(notifications).toContain(session);
+    unsubscribe();
   });
 
   it('keeps event revisions across disconnects so late snapshots can be discarded', () => {

@@ -2,6 +2,12 @@
 
 The Combined Margin workspace presents current portfolio condition before hypothetical analysis.
 
+## Portfolio Health Center
+
+The administrator Combined workspace includes a compact Portfolio Health Center above the portfolio metrics. It reports TradeNet private account-stream readiness, quote freshness across tracked Margin and cash holdings, provider-confirmed REST execution-history refresh time, and encrypted cloud workspace status as separate source signals. A cached history snapshot is not presented as a provider-confirmed refresh; a live account stream requires validated portfolio and orders events; missing or stale quote evidence remains qualified.
+
+The Review broker activity action opens the existing read-only reconciliation section in Trades. It does not resolve findings, write financial state or add a second reconciliation owner. See Portfolio Health Center UX for the source contracts.
+
 ## Headline and scenarios
 
 The headline KPI order is account equity, Margin position market value, gross unrealized P&L, margin debt and margin risk. Net return at targets and the post-sale balance-floor horizon remain in Scenario outlook. Gross unrealized P&L is not net of commissions, financing, taxes or future sale costs.
