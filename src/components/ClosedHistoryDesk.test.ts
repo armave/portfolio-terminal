@@ -28,16 +28,16 @@ describe('Cloud-priority history reconciliation', () => {
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
     expect(pipeline).toContain(
-      'mergeBrokerExecutionHistory(\\n      mergeBrokerExecutionHistory(savedExecutions, currentExecutions),\\n      cloudExecutions\\n    )'
+      'mergeBrokerExecutionHistory(\n      mergeBrokerExecutionHistory(savedExecutions, currentExecutions),\n      cloudExecutions\n    )'
     );
     expect(pipeline).toContain(
       '[...savedExecutions, ...currentExecutions, ...cloudExecutions]'
     );
     expect(pipeline).toContain(
-      'mergeBrokerExecutionHistory(\\n        mergeBrokerExecutionHistory(latestSavedExecutions, latestCurrentExecutions),\\n        cloudExecutions\\n      )'
+      'mergeBrokerExecutionHistory(\n        mergeBrokerExecutionHistory(latestSavedExecutions, latestCurrentExecutions),\n        cloudExecutions\n      )'
     );
     expect(pipeline).toContain(
-      'mergeFreedomCashflowRows(\\n        mergeFreedomCashflowRows(\\n          mergeFreedomCashflowRows(savedCashflows, currentCashflows),\\n          cloudCashflows\\n        ),\\n        fetchedCashflows\\n      )'
+      'mergeFreedomCashflowRows(\n        mergeFreedomCashflowRows(\n          mergeFreedomCashflowRows(savedCashflows, currentCashflows),\n          cloudCashflows\n        ),\n        fetchedCashflows\n      )'
     );
   });
 });
