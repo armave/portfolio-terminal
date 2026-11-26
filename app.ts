@@ -883,16 +883,16 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
       );
       const mergedState = cloudAuthoritative
         ? {
-      ...createBlankPortfolioState(),
-      ...compatibleCloudState,
-      // These values are intentionally excluded from /api/state. Keep them on
-      // their separate device/Closed History storage paths during snapshot adoption.
-      gatewaySecret: state.gatewaySecret,
-      marginBalance: (state as unknown as Record<string, unknown>).marginBalance,
-      brokerExecutedTrades: state.brokerExecutedTrades,
-      cashflows: state.cashflows,
-      closedHistory: state.closedHistory
-    }
+          ...createBlankPortfolioState(),
+          ...compatibleCloudState,
+          // These values are intentionally excluded from /api/state. Keep them on
+          // their separate device/Closed History storage paths during snapshot adoption.
+          gatewaySecret: state.gatewaySecret,
+          marginBalance: (state as unknown as Record<string, unknown>).marginBalance,
+          brokerExecutedTrades: state.brokerExecutedTrades,
+          cashflows: state.cashflows,
+          closedHistory: state.closedHistory
+        }
         : { ...state, ...compatibleCloudState };
       const applied = cloudAuthoritative
         ? portfolioStore.replaceFromAuthoritativeCloudSnapshot(mergedState)
