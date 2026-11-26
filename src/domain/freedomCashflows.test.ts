@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isFreedomCashflowRow,
+  parseFreedomCashflowDate,
   getFreedomCashflowRefreshStartDate,
   mergeFreedomCashflowRows,
   normalizeFreedomCashflowRows,
@@ -72,6 +73,15 @@ describe("Freedom cashflow normalization", () => {
     expect(isFreedomCashflowRow({ id: "cashflow-legacy-workbook-row" })).toBe(false);
   });
 
+  it("preserves an Excel date serial as source evidence instead of rewriting persisted date identity", () => {
+    const rows = normalizeFreedomCashflowRows({
+      cashflows: [{ operation_id: 46324, date: 46324, type: "Fee", amount: -1, currency: "USD" }]
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: "freedom-46324", date: "46324" });
+    expect(parseFreedomCashflowDate(rows[0].date)).toEqual({ timestamp: Date.UTC(2026, 9, 29), dateOnly: true });
+  });
+
   it("preserves duplicate-looking rows without provider IDs as separate provisional observations", () => {
     const rows = normalizeFreedomCashflowRows({
       cashflows: [
@@ -105,6 +115,26 @@ describe("Freedom cashflow normalization", () => {
     });
 
     expect(rows.map(row => row.amount)).toEqual([-7.5, 125]);
+  });
+});
+
+describe("Freedom cashflow activity-date parsing", () => {
+  it("parses numeric Excel day serials as dates rather than far-future years", () => {
+    const expectedDate = Date.UTC(2026, 9, 29);
+    expect(parseFreedomCashflowDate("46324")).toEqual({ timestamp: expectedDate, dateOnly: true });
+    expect(parseFreedomCashflowDate(46324)).toEqual({ timestamp: expectedDate, dateOnly: true });
+    expect(parseFreedomCashflowDate("46324.5")).toEqual({ timestamp: expectedDate + 43_200_000, dateOnly: false });
+  });
+  it("preserves date-only precision for ISO and legacy day-month-year strings", () => {
+    expect(parseFreedomCashflowDate("2026-10-29")).toEqual({ timestamp: Date.UTC(2026, 9, 29), dateOnly: true });
+    expect(parseFreedomCashflowDate("29.10.2026")).toEqual({ timestamp: Date.UTC(2026, 9, 29), dateOnly: true });
+    expect(parseFreedomCashflowDate("2026-10-29T14:30:00.000Z")).toEqual({ timestamp: Date.UTC(2026, 9, 29, 14, 30), dateOnly: false });
+  });
+  it("rejects malformed and incomplete numeric dates", () => {
+    expect(parseFreedomCashflowDate("not-a-date")).toBeNull();
+    expect(parseFreedomCashflowDate("2026")).toBeNull();
+    expect(parseFreedomCashflowDate(463)).toBeNull();
+    expect(parseFreedomCashflowDate(null)).toBeNull();
   });
 });
 
