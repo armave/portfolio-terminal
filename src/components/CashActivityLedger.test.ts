@@ -61,6 +61,8 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain('dateOnly: parsedDate?.dateOnly ?? false');
     expect(source).toContain('formatDate(row.timestamp, row.dateOnly)');
     expect(source).toContain("timeZone: 'UTC'");
+    expect(source).toContain('const periodStartDate = startAt === null ? null : new Date(startAt)');
+    expect(source).toContain('row.dateOnly && periodStartDate');
   });
 
   it('uses eligible verified USD rows only and shows coverage before interpreting totals', () => {

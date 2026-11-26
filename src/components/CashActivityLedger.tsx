@@ -47,7 +47,7 @@ function equalSnapshot(left: CashActivitySnapshot, right: CashActivitySnapshot):
     left.balance === right.balance;
 }
 
-remove old parserfunction categoryFromEvent(event: PortfolioTransactionEvent): CashflowCategory {
+function categoryFromEvent(event: PortfolioTransactionEvent): CashflowCategory {
   if (event.cashflowCategory) return event.cashflowCategory;
   switch (event.type) {
     case 'cash.deposit': return 'deposit';
@@ -206,12 +206,19 @@ export function CashActivityLedger() {
         : periodFilter === 'year'
           ? new Date(new Date().getFullYear(), 0, 1).getTime()
           : null;
+    const periodStartDate = startAt === null ? null : new Date(startAt);
     const query = search.trim().toLowerCase();
     return rows.filter(row => {
       if (categoryFilter !== 'all' && row.category !== categoryFilter) return false;
       if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
       if (qualityFilter !== 'all' && row.quality !== qualityFilter) return false;
-      if (startAt !== null && (row.timestamp === null || row.timestamp < startAt)) return false;
+      if (startAt !== null) {
+        if (row.timestamp === null) return false;
+        const rowPeriodStart = row.dateOnly && periodStartDate
+          ? Date.UTC(periodStartDate.getFullYear(), periodStartDate.getMonth(), periodStartDate.getDate())
+          : startAt;
+        if (row.timestamp < rowPeriodStart) return false;
+      }
       const searchableText = [
         row.id, row.description, categoryLabel(row.category), row.currency || '',
         row.source, row.quality, row.legacyManual ? 'historical manual entry' : ''
