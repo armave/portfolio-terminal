@@ -548,11 +548,12 @@ async function pullCloudState(
     // a rejected import must leave the current device's saved portfolio intact.
     if (typeof pullCloudAndRewriteLocal === 'function') {
       try {
-        pullCloudAndRewriteLocal(
-        stateToPersist,
-        handlers.replaceLocalState === true,
-        handlers.cloudAuthoritative === true && handlers.replaceLocalState !== true
-      );
+        if (handlers.cloudAuthoritative === true && handlers.replaceLocalState !== true) {
+          pullCloudAndRewriteLocal(stateToPersist, handlers.replaceLocalState === true, true);
+        } else {
+          // Preserve the established callback arity for manual/non-authoritative pulls.
+          pullCloudAndRewriteLocal(stateToPersist, handlers.replaceLocalState === true);
+        }
       } catch (applicationError) {
         recordCloudSyncDiagnostic({
           operation: 'pull', outcome: 'conflict',
