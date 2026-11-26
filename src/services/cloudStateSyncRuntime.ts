@@ -743,7 +743,7 @@ async function tryAutoReconcileCloudConflict(
         expectedRevision, observedRevision: latestRevision
       });
       handlers.onStatusChange?.('synced');
-      (handlers.logAppMessage || ((_message: string) => logSafeDiagnostic('info', 'cloud-sync'))) (
+      handlers.logAppMessage?.(
         '[Cloud Conflict]: The latest validated cloud snapshot replaced this device snapshot during automatic recovery.'
       );
       return true;

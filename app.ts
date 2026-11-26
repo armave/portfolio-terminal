@@ -778,7 +778,17 @@ function pullCloudAndRewriteLocal(
     migrationFallback
   );
   const mergedState = cloudAuthoritative
-    ? { ...createBlankPortfolioState(), ...compatibleCloudState, gatewaySecret: state.gatewaySecret }
+    ? {
+      ...createBlankPortfolioState(),
+      ...compatibleCloudState,
+      // These values are intentionally excluded from /api/state. Keep them on
+      // their separate device/Closed History storage paths during snapshot adoption.
+      gatewaySecret: state.gatewaySecret,
+      marginBalance: (state as unknown as Record<string, unknown>).marginBalance,
+      brokerExecutedTrades: state.brokerExecutedTrades,
+      cashflows: state.cashflows,
+      closedHistory: state.closedHistory
+    }
     : { ...state, ...compatibleCloudState };
   if (currentAccountRole === 'guest') {
     // The shared snapshot may contain the admin's last-opened desk. Guest login
@@ -796,7 +806,7 @@ function pullCloudAndRewriteLocal(
     const message = replaceLocalState
       ? 'Cloud snapshot could not be applied to this device. The local portfolio was preserved.'
       : cloudAuthoritative
-        ? 'The latest cloud portfolio could not be committed to this device. The local portfolio was preserved.'
+        ? 'Cloud snapshot could not be applied to this device. The local portfolio was preserved.'
         : 'Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.';
     throw new Error(translateText(message, getAppLanguage()));
   }
@@ -872,7 +882,17 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
         migrationFallback
       );
       const mergedState = cloudAuthoritative
-        ? { ...createBlankPortfolioState(), ...compatibleCloudState, gatewaySecret: state.gatewaySecret }
+        ? {
+      ...createBlankPortfolioState(),
+      ...compatibleCloudState,
+      // These values are intentionally excluded from /api/state. Keep them on
+      // their separate device/Closed History storage paths during snapshot adoption.
+      gatewaySecret: state.gatewaySecret,
+      marginBalance: (state as unknown as Record<string, unknown>).marginBalance,
+      brokerExecutedTrades: state.brokerExecutedTrades,
+      cashflows: state.cashflows,
+      closedHistory: state.closedHistory
+    }
         : { ...state, ...compatibleCloudState };
       const applied = cloudAuthoritative
         ? portfolioStore.replaceFromAuthoritativeCloudSnapshot(mergedState)
