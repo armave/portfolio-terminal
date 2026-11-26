@@ -1230,6 +1230,22 @@ export class PortfolioStore {
     }, true, 'derived');
   }
 
+  /**
+   * Adopt a complete authenticated cloud snapshot after decryption, schema
+   * validation and revision acceptance. Unlike importState(), this replaces
+   * conflicting same-account financial journals with the accepted cloud copy.
+   * The storage boundary queues the previous scoped snapshot for recovery.
+   */
+  public replaceFromAuthoritativeCloudSnapshot(newState: PortfolioState): boolean {
+    if (!hasValidPortfolioImportShape(newState) ||
+        !hasValidClosedHistoryFeeAuditHistory(
+          newState.transactionEvents || [],
+          newState.closedTrades || [],
+          newState.cashflows || []
+        )) return false;
+    return this.update(() => ({ ...newState }), true, 'derived');
+  }
+
   public importState(newState: Partial<PortfolioState>): boolean {
     if (!hasValidPortfolioImportShape(newState)) return false;
 
