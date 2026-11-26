@@ -1230,6 +1230,23 @@ export class PortfolioStore {
     }, true, 'derived');
   }
 
+  /**
+   * Adopt a complete, authenticated and validated cloud snapshot as authoritative.
+   * This replaces the device snapshot and journals exactly as supplied: it does not
+   * merge local event IDs or synthesize financial reconciliation events from stale
+   * device state. The normal persistence boundary retains the previous scoped
+   * snapshot into the account-scoped last-known-good recovery queue as the new state is committed.
+   */
+  public replaceFromAuthoritativeCloudSnapshot(newState: PortfolioState): boolean {
+    if (!hasValidPortfolioImportShape(newState) ||
+        !hasValidClosedHistoryFeeAuditHistory(
+          newState.transactionEvents || [],
+          newState.closedTrades || [],
+          newState.cashflows || []
+        )) return false;
+    return this.update(() => ({ ...newState }), true, 'derived');
+  }
+
   public importState(newState: Partial<PortfolioState>): boolean {
     if (!hasValidPortfolioImportShape(newState)) return false;
 
