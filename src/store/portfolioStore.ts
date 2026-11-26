@@ -1235,7 +1235,7 @@ export class PortfolioStore {
    * This replaces the device snapshot and journals exactly as supplied: it does not
    * merge local event IDs or synthesize financial reconciliation events from stale
    * device state. The normal persistence boundary retains the previous scoped
-   * snapshot as last-known-good recovery before the new state becomes visible.
+   * snapshot into the account-scoped last-known-good recovery queue as the new state is committed.
    */
   public replaceFromAuthoritativeCloudSnapshot(newState: PortfolioState): boolean {
     if (!hasValidPortfolioImportShape(newState) ||
