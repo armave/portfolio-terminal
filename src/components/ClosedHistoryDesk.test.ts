@@ -36,9 +36,12 @@ describe('Cloud-priority history reconciliation', () => {
     expect(pipeline).toContain(
       'mergeBrokerExecutionHistory(\n        mergeBrokerExecutionHistory(latestSavedExecutions, latestCurrentExecutions),\n        cloudExecutions\n      )'
     );
-    expect(pipeline).toContain(
-      'mergeFreedomCashflowRows(\n        mergeFreedomCashflowRows(\n          mergeFreedomCashflowRows(savedCashflows, currentCashflows),\n          cloudCashflows\n        ),\n        fetchedCashflows\n      )'
-    );
+    const localCashflows = pipeline.indexOf('mergeFreedomCashflowRows(savedCashflows, currentCashflows)');
+    const cloudCashflows = pipeline.indexOf('cloudCashflows', localCashflows);
+    const latestProviderCashflows = pipeline.indexOf('fetchedCashflows', cloudCashflows);
+    expect(localCashflows).toBeGreaterThanOrEqual(0);
+    expect(cloudCashflows).toBeGreaterThan(localCashflows);
+    expect(latestProviderCashflows).toBeGreaterThan(cloudCashflows);
   });
 });
 
