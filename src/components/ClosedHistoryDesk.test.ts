@@ -18,6 +18,30 @@ function readBrokerRuntimeSource(): string {
   return readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
+describe('Cloud-priority history reconciliation', () => {
+  it('prefers cloud facts for duplicate execution and cashflow IDs while retaining provider corrections last', () => {
+    const app = readRuntimeSource();
+    const start = app.indexOf('async function performAdminClosedHistorySync');
+    const end = app.indexOf('const tradesHistorySyncRuntime', start);
+    const pipeline = app.slice(start, end);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(pipeline).toContain(
+      'mergeBrokerExecutionHistory(\\n      mergeBrokerExecutionHistory(savedExecutions, currentExecutions),\\n      cloudExecutions\\n    )'
+    );
+    expect(pipeline).toContain(
+      '[...savedExecutions, ...currentExecutions, ...cloudExecutions]'
+    );
+    expect(pipeline).toContain(
+      'mergeBrokerExecutionHistory(\\n        mergeBrokerExecutionHistory(latestSavedExecutions, latestCurrentExecutions),\\n        cloudExecutions\\n      )'
+    );
+    expect(pipeline).toContain(
+      'mergeFreedomCashflowRows(\\n        mergeFreedomCashflowRows(\\n          mergeFreedomCashflowRows(savedCashflows, currentCashflows),\\n          cloudCashflows\\n        ),\\n        fetchedCashflows\\n      )'
+    );
+  });
+});
+
 describe('Trades USD amount formatting', () => {
   it('uses the shared currency formatter without adding duplicate dollar symbols', () => {
     const source = readSource();

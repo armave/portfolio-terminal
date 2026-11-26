@@ -1642,19 +1642,23 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
     const cloudExecutions = freedomBrokerAdapter.normalizeExecutions(cloudHistory?.brokerExecutedTrades || [], { source: 'cache' }).data;
     const savedExecutions = freedomBrokerAdapter.normalizeExecutions(savedAtStart.brokerExecutedTrades, { source: 'cache' }).data;
     const currentExecutions = freedomBrokerAdapter.normalizeExecutions(currentAtStart.brokerExecutedTrades || [], { source: 'cache' }).data;
+    // Keep device-only rows, but let duplicate stable IDs from authenticated
+    // cloud history override local sidecar copies during startup reconciliation.
     const baselineExecutions = mergeBrokerExecutionHistory(
-      mergeBrokerExecutionHistory(cloudExecutions, savedExecutions),
-      currentExecutions
+      mergeBrokerExecutionHistory(savedExecutions, currentExecutions),
+      cloudExecutions
     );
     const executionsWithFees = preservePersistedBrokerFeeAllocations(
       baselineExecutions,
-      [...savedExecutions, ...cloudExecutions, ...currentExecutions]
+      [...savedExecutions, ...currentExecutions, ...cloudExecutions]
     );
-    const priorCashflows = [
-      ...normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []),
-      ...normalizeSavedFreedomCashflows(savedAtStart.cashflows),
-      ...normalizeSavedFreedomCashflows(currentAtStart.cashflows || [])
-    ];
+    const priorCashflows = mergeFreedomCashflowRows(
+      mergeFreedomCashflowRows(
+        normalizeSavedFreedomCashflows(savedAtStart.cashflows),
+        normalizeSavedFreedomCashflows(currentAtStart.cashflows || [])
+      ),
+      normalizeSavedFreedomCashflows(cloudHistory?.cashflows || [])
+    );
     const hasCashflowBaseline = hasFreedomCashflowHistoryBaseline(accountId);
     const latestTradeCheckpoint = getLatestClosedTradeCheckpoint(
       executionsWithFees,
@@ -1694,18 +1698,20 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
     const latestCurrentExecutions = freedomBrokerAdapter.normalizeExecutions(current.brokerExecutedTrades || [], { source: 'cache' }).data;
     const mergedExecutions = preservePersistedBrokerFeeAllocations(
       mergeBrokerExecutionHistory(
-        mergeBrokerExecutionHistory(cloudExecutions, latestSavedExecutions),
-        latestCurrentExecutions
+        mergeBrokerExecutionHistory(latestSavedExecutions, latestCurrentExecutions),
+        cloudExecutions
       ),
-      [...latestSavedExecutions, ...cloudExecutions, ...latestCurrentExecutions]
+      [...latestSavedExecutions, ...latestCurrentExecutions, ...cloudExecutions]
     );
     const cloudCashflows = normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []);
     const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
     const currentCashflows = normalizeSavedFreedomCashflows(current.cashflows || []);
+    // The authenticated cloud copy wins duplicate IDs over either local cache.
+    // A fresh broker response is newest provider evidence and remains last.
     const mergedCashflows = mergeFreedomCashflowRows(
       mergeFreedomCashflowRows(
-        mergeFreedomCashflowRows(cloudCashflows, savedCashflows),
-        currentCashflows
+        mergeFreedomCashflowRows(savedCashflows, currentCashflows),
+        cloudCashflows
       ),
       fetchedCashflows
     );
