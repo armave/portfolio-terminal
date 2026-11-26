@@ -142,7 +142,7 @@ export interface SyncOptions {
   state?: CloudStateInput;
   secret?: string;
   /** Apply and persist a validated pull; this callback is the local commit boundary. */
-  pullCloudAndRewriteLocal?: (state: CloudStateRecord, replaceLocalState?: boolean) => void;
+  pullCloudAndRewriteLocal?: (state: CloudStateRecord, replaceLocalState?: boolean, cloudAuthoritative?: boolean) => void;
   /** Set only for a user-confirmed Settings pull after the backup warning. */
   replaceLocalState?: boolean;
   getState?: () => CloudStateInput;
@@ -155,7 +155,9 @@ export interface SyncOptions {
   allowCloudWrites?: boolean;
   onEncryptionMigrationFailure?: (error: Error) => void;
   /** Apply a validated background reconciliation without changing the visible desk. */
-  applyAutoReconciledState?: (state: CloudStateRecord) => boolean | void;
+  applyAutoReconciledState?: (state: CloudStateRecord, cloudAuthoritative?: boolean) => boolean | void;
+  /** Prefer the latest validated cloud snapshot over local state on startup and revision conflicts. */
+  cloudAuthoritative?: boolean;
   /** Protect edits made locally while an asynchronous pull is in flight. */
   protectLocalEditsDuringPull?: boolean;
   /** Enqueue a follow-up push when a pull preserves newer local edits. */
@@ -332,7 +334,7 @@ async function pullCloudState(
 
   const currentSecret = handlers.secret || getActiveGatewaySecret();
   const isCurrentSession = handlers.isCurrentSession || (() => true);
-  const pullBaseline = handlers.protectLocalEditsDuringPull
+  const pullBaseline = handlers.protectLocalEditsDuringPull && handlers.cloudAuthoritative !== true
     ? prepareCloudStateSnapshot(handlers.getState?.() || state)
     : null;
   let diagnosticHttpStatus: number | undefined;
@@ -546,7 +548,11 @@ async function pullCloudState(
     // a rejected import must leave the current device's saved portfolio intact.
     if (typeof pullCloudAndRewriteLocal === 'function') {
       try {
-        pullCloudAndRewriteLocal(stateToPersist, handlers.replaceLocalState === true);
+        if (handlers.cloudAuthoritative === true) {
+          pullCloudAndRewriteLocal(stateToPersist, handlers.replaceLocalState === true, true);
+        } else {
+          pullCloudAndRewriteLocal(stateToPersist, handlers.replaceLocalState === true);
+        }
       } catch (applicationError) {
         recordCloudSyncDiagnostic({
           operation: 'pull', outcome: 'conflict',
@@ -719,13 +725,34 @@ async function tryAutoReconcileCloudConflict(
       remoteState = prepareCloudStateSnapshot(parsedState);
     }
 
+    const remoteFingerprint = cloudStateFingerprint(remoteState);
+    if (handlers.cloudAuthoritative === true) {
+      const applied = applyReconciledState(remoteState, true);
+      if (applied === false || !isCurrentSession()) {
+        return fail('local-apply-rejected', response.status, latestRevision);
+      }
+      // Do not trust the newer revision until the canonical local commit succeeded.
+      revisionCoordinator.recordPulledRevision(latestRevision);
+      cloudStateBaseSnapshots.set(secret, remoteState);
+      cloudStatePushFingerprints.set(secret, remoteFingerprint);
+      if (cloudStateConflictSecret === secret) cloudStateConflictSecret = null;
+      recordCloudSyncDiagnostic({
+        operation: 'reconcile', outcome: 'success', reason: 'auto-reconciled',
+        expectedRevision, observedRevision: latestRevision
+      });
+      handlers.onStatusChange?.('synced');
+      handlers.logAppMessage?.(
+        '[Cloud Conflict]: The latest validated cloud snapshot replaced this device snapshot during automatic recovery.'
+      );
+      return true;
+    }
+
     const latestLocal = handlers.getState?.() || conflictedState;
     const localState = prepareCloudStateSnapshot(latestLocal);
     const merged = reconcileCloudStateSnapshots(base, localState, remoteState);
     if (!merged) return fail('overlapping-edits', response.status, latestRevision);
 
     const mergedFingerprint = cloudStateFingerprint(merged);
-    const remoteFingerprint = cloudStateFingerprint(remoteState);
     let encryptedMerged: string | null = null;
     if (mergedFingerprint !== remoteFingerprint) {
       const serialized = JSON.stringify(merged);

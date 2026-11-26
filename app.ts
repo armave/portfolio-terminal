@@ -757,28 +757,51 @@ async function pushStateToCloud(forceImmediate = false, announceProgress = false
 
 const pushStateToGist = pushStateToCloud;
 
-function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>, replaceLocalState = false) {
+function pullCloudAndRewriteLocal(
+  parsedState: Record<string, unknown>,
+  replaceLocalState = false,
+  cloudAuthoritative = false
+) {
   const currentView = state.activeView;
-  // The cloud validator checks safe containers; this migration helper owns legacy field normalization.
+  const migrationFallback: Partial<PortfolioState> = cloudAuthoritative
+    ? {
+      ...createBlankPortfolioState(),
+      closedTrades: Array.isArray(parsedState.closedTrades)
+        ? parsedState.closedTrades as PortfolioState['closedTrades']
+        : []
+    }
+    : state;
   const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(
     parsedState as unknown as Partial<PortfolioState>,
-    state
+    migrationFallback
   );
-  const mergedState = { ...state, ...compatibleCloudState };
+  const mergedState = cloudAuthoritative
+    ? {
+      ...createBlankPortfolioState(),
+      ...compatibleCloudState,
+      gatewaySecret: state.gatewaySecret,
+      marginBalance: (state as unknown as Record<string, unknown>).marginBalance,
+      brokerExecutedTrades: state.brokerExecutedTrades,
+      cashflows: state.cashflows,
+      closedHistory: state.closedHistory
+    }
+    : { ...state, ...compatibleCloudState };
   if (currentAccountRole === 'guest') {
-    // The shared snapshot may contain the admin's last-opened desk. Guest login
-    // always starts on Balance instead of inheriting that shared navigation state.
     mergedState.activeView = 'CASH_CUSHION';
-  } else if (!parsedState?.activeView && currentView) {
+  } else if (!cloudAuthoritative && !parsedState?.activeView && currentView) {
     mergedState.activeView = currentView;
   }
   const applied = replaceLocalState
     ? portfolioStore.replaceFromConfirmedCloudPull(mergedState)
-    : portfolioStore.importState(mergedState);
+    : cloudAuthoritative
+      ? portfolioStore.replaceFromAuthoritativeCloudSnapshot(mergedState)
+      : portfolioStore.importState(mergedState);
   if (!applied) {
     const message = replaceLocalState
       ? 'Cloud snapshot could not be applied to this device. The local portfolio was preserved.'
-      : 'Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.';
+      : cloudAuthoritative
+        ? 'Cloud snapshot could not be applied to this device. The local portfolio was preserved.'
+        : 'Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.';
     throw new Error(translateText(message, getAppLanguage()));
   }
   state = portfolioStore.getState();
@@ -801,7 +824,7 @@ function releaseStartupCloudWrites(): void {
   if (startupCloudWriteGate.releaseAfterAcceptedStartupPull()) flushDeferredStartupCloudWrite();
 }
 
-async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean; announceProgress?: boolean } = {}) {
+async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean; announceProgress?: boolean; cloudAuthoritative?: boolean } = {}) {
   if (currentAccountRole === 'guest') {
     if (mode === 'pull') return pullGuestPortfolioSnapshot();
     return false;
@@ -834,17 +857,37 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
     allowCloudWrites: canWriteCloudState,
     protectLocalEditsDuringPull: pullOptions.protectLocalEditsDuringPull === true,
     replaceLocalState: pullOptions.replaceLocalState === true,
+    cloudAuthoritative: pullOptions.cloudAuthoritative !== false,
     onLocalChangesPreserved: () => { startupCloudWriteGate.deferWrite(); },
     pullCloudAndRewriteLocal,
-    applyAutoReconciledState: (parsedState) => {
-      // Apply a validated background merge without switching desks or scrolling
-      // the workspace; users can continue working while cloud state reconciles.
+    applyAutoReconciledState: (parsedState, cloudAuthoritative = false) => {
+      const migrationFallback: Partial<PortfolioState> = cloudAuthoritative
+        ? {
+          ...createBlankPortfolioState(),
+          closedTrades: Array.isArray(parsedState.closedTrades)
+            ? parsedState.closedTrades as PortfolioState['closedTrades']
+            : []
+        }
+        : state;
       const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(
         parsedState as unknown as Partial<PortfolioState>,
-        state
+        migrationFallback
       );
-      const mergedState = { ...state, ...compatibleCloudState };
-      if (!portfolioStore.importState(loadSavedState(mergedState))) return false;
+      const mergedState = cloudAuthoritative
+        ? {
+          ...createBlankPortfolioState(),
+          ...compatibleCloudState,
+          gatewaySecret: state.gatewaySecret,
+          marginBalance: (state as unknown as Record<string, unknown>).marginBalance,
+          brokerExecutedTrades: state.brokerExecutedTrades,
+          cashflows: state.cashflows,
+          closedHistory: state.closedHistory
+        }
+        : { ...state, ...compatibleCloudState };
+      const applied = cloudAuthoritative
+        ? portfolioStore.replaceFromAuthoritativeCloudSnapshot(mergedState)
+        : portfolioStore.importState(loadSavedState(mergedState));
+      if (!applied) return false;
       state = portfolioStore.getState();
       return true;
     },
@@ -1590,18 +1633,20 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
     const savedExecutions = freedomBrokerAdapter.normalizeExecutions(savedAtStart.brokerExecutedTrades, { source: 'cache' }).data;
     const currentExecutions = freedomBrokerAdapter.normalizeExecutions(currentAtStart.brokerExecutedTrades || [], { source: 'cache' }).data;
     const baselineExecutions = mergeBrokerExecutionHistory(
-      mergeBrokerExecutionHistory(cloudExecutions, savedExecutions),
-      currentExecutions
+      mergeBrokerExecutionHistory(savedExecutions, currentExecutions),
+      cloudExecutions
     );
     const executionsWithFees = preservePersistedBrokerFeeAllocations(
       baselineExecutions,
-      [...savedExecutions, ...cloudExecutions, ...currentExecutions]
+      [...savedExecutions, ...currentExecutions, ...cloudExecutions]
     );
-    const priorCashflows = [
-      ...normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []),
-      ...normalizeSavedFreedomCashflows(savedAtStart.cashflows),
-      ...normalizeSavedFreedomCashflows(currentAtStart.cashflows || [])
-    ];
+    const priorCashflows = mergeFreedomCashflowRows(
+      mergeFreedomCashflowRows(
+        normalizeSavedFreedomCashflows(savedAtStart.cashflows),
+        normalizeSavedFreedomCashflows(currentAtStart.cashflows || [])
+      ),
+      normalizeSavedFreedomCashflows(cloudHistory?.cashflows || [])
+    );
     const hasCashflowBaseline = hasFreedomCashflowHistoryBaseline(accountId);
     const latestTradeCheckpoint = getLatestClosedTradeCheckpoint(
       executionsWithFees,
@@ -1641,18 +1686,18 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
     const latestCurrentExecutions = freedomBrokerAdapter.normalizeExecutions(current.brokerExecutedTrades || [], { source: 'cache' }).data;
     const mergedExecutions = preservePersistedBrokerFeeAllocations(
       mergeBrokerExecutionHistory(
-        mergeBrokerExecutionHistory(cloudExecutions, latestSavedExecutions),
-        latestCurrentExecutions
+        mergeBrokerExecutionHistory(latestSavedExecutions, latestCurrentExecutions),
+        cloudExecutions
       ),
-      [...latestSavedExecutions, ...cloudExecutions, ...latestCurrentExecutions]
+      [...latestSavedExecutions, ...latestCurrentExecutions, ...cloudExecutions]
     );
     const cloudCashflows = normalizeSavedFreedomCashflows(cloudHistory?.cashflows || []);
     const savedCashflows = normalizeSavedFreedomCashflows(saved.cashflows);
     const currentCashflows = normalizeSavedFreedomCashflows(current.cashflows || []);
     const mergedCashflows = mergeFreedomCashflowRows(
       mergeFreedomCashflowRows(
-        mergeFreedomCashflowRows(cloudCashflows, savedCashflows),
-        currentCashflows
+        mergeFreedomCashflowRows(savedCashflows, currentCashflows),
+        cloudCashflows
       ),
       fetchedCashflows
     );
@@ -2101,7 +2146,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   pullSharedCloudState: async () => {
     try {
       setCloudStatus('syncing', 'CHECKING...');
-      return await syncCloudState('pull', { protectLocalEditsDuringPull: true });
+      return await syncCloudState('pull', { protectLocalEditsDuringPull: true, cloudAuthoritative: true });
     } finally {
       settleInitialWorkspaceSync();
     }

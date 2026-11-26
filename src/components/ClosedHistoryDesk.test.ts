@@ -18,6 +18,32 @@ function readBrokerRuntimeSource(): string {
   return readFileSync(new URL('../services/portfolioBrokerDataRuntime.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 }
 
+describe('Cloud-priority history reconciliation', () => {
+  it('prefers cloud facts for duplicate execution and cashflow IDs while keeping fresh broker evidence last', () => {
+    const app = readRuntimeSource();
+    const start = app.indexOf('async function performAdminClosedHistorySync');
+    const end = app.indexOf('const tradesHistorySyncRuntime', start);
+    const pipeline = app.slice(start, end);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const startupLocal = pipeline.indexOf('mergeBrokerExecutionHistory(savedExecutions, currentExecutions)');
+    const startupCloud = pipeline.indexOf('cloudExecutions', startupLocal);
+    const finalLocal = pipeline.indexOf('mergeBrokerExecutionHistory(latestSavedExecutions, latestCurrentExecutions)');
+    const finalCloud = pipeline.indexOf('cloudExecutions', finalLocal);
+    expect(startupLocal).toBeGreaterThanOrEqual(0);
+    expect(startupCloud).toBeGreaterThan(startupLocal);
+    expect(finalLocal).toBeGreaterThan(startupLocal);
+    expect(finalCloud).toBeGreaterThan(finalLocal);
+    const localCashflows = pipeline.indexOf('mergeFreedomCashflowRows(savedCashflows, currentCashflows)');
+    const cloudCashflows = pipeline.indexOf('cloudCashflows', localCashflows);
+    const latestProviderCashflows = pipeline.indexOf('fetchedCashflows', cloudCashflows);
+    expect(localCashflows).toBeGreaterThanOrEqual(0);
+    expect(cloudCashflows).toBeGreaterThan(localCashflows);
+    expect(latestProviderCashflows).toBeGreaterThan(cloudCashflows);
+  });
+});
+
 describe('Trades USD amount formatting', () => {
   it('uses the shared currency formatter without adding duplicate dollar symbols', () => {
     const source = readSource();

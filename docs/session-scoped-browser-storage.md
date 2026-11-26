@@ -35,9 +35,10 @@ A failed identity lookup invalidates the session, moves to the offline namespace
 
 ## Import and replacement semantics
 
-- `PortfolioStore.importState()` remains the normal same-workspace restore path. It preserves append-only transaction, corporate-action, and market-history journals and rejects conflicting history.
+- `PortfolioStore.importState()` remains the same-workspace merge/restore path for backups and imports that are explicitly intended to preserve local append-only journals. It rejects conflicting event identities and invalid linked history.
 - `PortfolioStore.replaceWorkspace()` is reserved for switching authenticated local storage scopes. It replaces the in-memory state and its journals instead of merging events from the previous identity.
-- `PortfolioStore.replaceFromConfirmedCloudPull()` is a separate, user-confirmed same-workspace recovery boundary. Settings shows the backup warning/confirmation before invoking it; the validated cloud snapshot replaces the local snapshot and journals instead of merging conflicting event identities. Ordinary startup/background pulls must continue using `importState()`.
+- `PortfolioStore.replaceFromConfirmedCloudPull()` remains the separate, user-confirmed Settings recovery boundary. Settings shows the backup warning/confirmation before invoking it.
+- `PortfolioStore.replaceFromAuthoritativeCloudSnapshot()` is used only after the authenticated cloud record has been decrypted, schema-validated and accepted at its current revision. Authenticated startup hydration and automatic 409 recovery replace the same-account snapshot and journals with the cloud copy; they do not merge stale local financial fields, append local event rows, or synthesize reconciliation events from the replaced snapshot. Fields outside `/api/state`—the device Gateway Secret, legacy `marginBalance`, and broker-execution/cashflow/Closed History sidecar—remain on their existing account-scoped storage and history-sync paths.
 - Portfolio reset semantics are unchanged: reset within a workspace retains that workspace's append-only transaction journal and writes its reset marker. The IndexedDB portfolio recovery row advances to the reset generation so damaged data cannot resurrect pre-reset positions.
 - Pending history writes retain their captured storage scope and are drained before the active scope changes. They cannot be redirected into the next account's history database.
 - Concurrent storage activations are serialized; an older authentication response cannot reactivate a prior workspace or re-enable administrator cloud writes after a newer login.
@@ -77,7 +78,7 @@ Broker assumptions and the closed-history cache also retain scoped recovery data
 
 Recovery copies are not merged into financial records. They restore one complete prior valid version only; they do not infer missing trades, combine divergent positions, or reconcile independently edited offline tabs. An explicit portfolio reset writes a blank recovery baseline so a later repair cannot resurrect pre-reset holdings or history. Clearing local data removes the corresponding portfolio and broker-rule recovery copies.
 
-Cloud revision conflicts continue to use the separate conservative three-way reconciler: only allowlisted UI preferences are field-merged, and conflicting financial snapshots remain blocked for backup/manual recovery.
+Authenticated application sync treats the latest valid cloud revision as authoritative on startup and after a revision-conflict response. It adopts the current cloud snapshot rather than merging stale local financial state back into the shared record. A missing cloud record after a previously accepted populated revision, authentication/network/decryption/validation error, or rejected local commit does not become blank data; the device keeps its last-known-good workspace and stale writes remain blocked. The conservative three-way reconciler remains available to non-authoritative runtime callers that do not select the cloud-first policy.
 
 ## Automatic device-local recovery
 

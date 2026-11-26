@@ -8,7 +8,7 @@ The administrator Closed History workflow now uses one app-owned synchronization
 
 - `app.ts` remains the runtime composition root and creates `createTradesHistorySyncRuntime`.
 - `src/services/tradesHistorySyncRuntime.ts` owns account/session-scoped in-flight work, operation identity, coalescing, refresh priority, and bounded in-memory diagnostics.
-- The app-owned reconciliation operation owns cloud-history pull/merge, cashflow retrieval, existing fee-allocation and audit calculations, canonical-store commit, local snapshot/sidecar persistence, and the conditional encrypted cloud-history push.
+- The app-owned reconciliation operation owns cloud-history pull/merge, cashflow retrieval, existing fee-allocation and audit calculations, canonical-store commit, local snapshot/sidecar persistence, and the conditional encrypted cloud-history push. For duplicate stable execution/cashflow IDs, authenticated cloud rows override local sidecar/cache copies; unique local-only rows remain because the provider has no verified deletion/tombstone contract. Fresh broker cashflow evidence is applied after cloud rows and may correct a matching operation.
 - `ClosedHistoryDesk` owns presentation, user intent, and view-local foreground broker-refresh state. It requests shared reconciliation and renders canonical store data; it does not independently fetch or persist cashflows or fees.
 - `CashActivityLedger` is a read-only presentation projection inside the Trades desk. It does not fetch broker history, persist a separate cash ledger, or issue cash-posting commands. Existing app journal events—including legacy manual entries—remain visible as historical evidence; broker-imported records remain evidence-only.
 - `src/domain/` remains the owner of deterministic merge, cashflow normalization, allocation, audit, and trade-checkpoint calculations.
@@ -19,7 +19,7 @@ The shared coordinator is deliberately not another financial store. `PortfolioSt
 
 The runtime accepts two modes:
 
-- `refresh`: pull cloud history and merge local/current history, then refresh cashflows when required. Scheduled and manual calls keep their existing provider-refresh behavior. A Trades-page read can skip a cashflow provider request when a completed baseline already contains the same latest closed-trade checkpoint.
+- `refresh`: pull cloud history first, merge local/current history while giving cloud rows precedence for duplicate stable IDs, then refresh cashflows when required. Unique local-only rows remain until a source with a verified deletion contract says otherwise. Scheduled and manual calls keep their existing provider-refresh behavior; fresh broker cashflow evidence is applied last. A Trades-page read can skip a cashflow provider request when a completed baseline already contains the same latest closed-trade checkpoint.
 - `recalculate`: reuse the accepted cashflow rows and rerun existing fee-allocation/audit calculations after relevant portfolio inputs change. It does not initiate another cashflow provider request.
 
 Requests are scoped by authenticated account identity plus session generation. Same-session callers join compatible active work only when the current fee-allocation input fingerprint also matches. The fingerprint covers cashflows, broker executions, app closed trades, tranche funding rules and mixes, and canonical open positions only when broker executions are absent; it excludes quote-only changes. A stronger provider refresh waits behind a cache-only Trades pass. A recalculation whose input fingerprint changes during an active refresh or recalculation is queued and runs against the latest canonical state. A provider refresh can satisfy a matching-input recalculation. A broker event that changes the canonical execution inputs requests a follow-up refresh; same-date fills are detected by the existing closed-trade checkpoint.
@@ -35,7 +35,7 @@ The coordinator generates an operation ID and tracks status, start/completion ti
 ## Persistence and recovery invariants
 
 1. Cloud workspace state and encrypted Closed History remain separately revisioned records.
-2. Provider execution rows are merged with saved history; bounded/incremental pages do not replace the complete accepted history.
+2. Cloud execution/cashflow records override matching local sidecar copies, while unique local-only rows remain available for recovery. Bounded/incremental broker pages do not replace complete accepted history; fresh provider corrections are applied last.
 3. Existing fee allocation and audit helpers are reused unchanged. No FIFO, commission, margin-interest, realized-P&L, or rounding formula changes are included.
 4. A rejected `commitClosedHistoryFeeSync` leaves the previous snapshot active.
 5. A failed portfolio snapshot save restores the prior in-memory snapshot and stops before a cloud-history push.
