@@ -757,28 +757,47 @@ async function pushStateToCloud(forceImmediate = false, announceProgress = false
 
 const pushStateToGist = pushStateToCloud;
 
-function pullCloudAndRewriteLocal(parsedState: Record<string, unknown>, replaceLocalState = false) {
+function pullCloudAndRewriteLocal(
+  parsedState: Record<string, unknown>,
+  replaceLocalState = false,
+  cloudAuthoritative = false
+) {
   const currentView = state.activeView;
-  // The cloud validator checks safe containers; this migration helper owns legacy field normalization.
+  // A legacy cloud snapshot is migrated against cloud defaults and its own
+  // closed trades, never against positions retained only on this device.
+  const migrationFallback: Partial<PortfolioState> = cloudAuthoritative
+    ? {
+      ...createBlankPortfolioState(),
+      closedTrades: Array.isArray(parsedState.closedTrades)
+        ? parsedState.closedTrades as PortfolioState['closedTrades']
+        : []
+    }
+    : state;
   const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(
     parsedState as unknown as Partial<PortfolioState>,
-    state
+    migrationFallback
   );
-  const mergedState = { ...state, ...compatibleCloudState };
+  const mergedState = cloudAuthoritative
+    ? { ...createBlankPortfolioState(), ...compatibleCloudState, gatewaySecret: state.gatewaySecret }
+    : { ...state, ...compatibleCloudState };
   if (currentAccountRole === 'guest') {
     // The shared snapshot may contain the admin's last-opened desk. Guest login
     // always starts on Balance instead of inheriting that shared navigation state.
     mergedState.activeView = 'CASH_CUSHION';
-  } else if (!parsedState?.activeView && currentView) {
+  } else if (!cloudAuthoritative && !parsedState?.activeView && currentView) {
     mergedState.activeView = currentView;
   }
   const applied = replaceLocalState
     ? portfolioStore.replaceFromConfirmedCloudPull(mergedState)
-    : portfolioStore.importState(mergedState);
+    : cloudAuthoritative
+      ? portfolioStore.replaceFromAuthoritativeCloudSnapshot(mergedState)
+      : portfolioStore.importState(mergedState);
   if (!applied) {
     const message = replaceLocalState
       ? 'Cloud snapshot could not be applied to this device. The local portfolio was preserved.'
-      : 'Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.';
+      : cloudAuthoritative
+        ? 'The latest cloud portfolio could not be committed to this device. The local portfolio was preserved.'
+        : 'Cloud portfolio could not be merged because its transaction journal conflicts with this device. The local state was preserved.';
     throw new Error(translateText(message, getAppLanguage()));
   }
   state = portfolioStore.getState();
@@ -801,7 +820,7 @@ function releaseStartupCloudWrites(): void {
   if (startupCloudWriteGate.releaseAfterAcceptedStartupPull()) flushDeferredStartupCloudWrite();
 }
 
-async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean; announceProgress?: boolean } = {}) {
+async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDuringPull?: boolean; replaceLocalState?: boolean; announceProgress?: boolean; cloudAuthoritative?: boolean } = {}) {
   if (currentAccountRole === 'guest') {
     if (mode === 'pull') return pullGuestPortfolioSnapshot();
     return false;
@@ -834,17 +853,31 @@ async function syncCloudState(mode = 'push', pullOptions: { protectLocalEditsDur
     allowCloudWrites: canWriteCloudState,
     protectLocalEditsDuringPull: pullOptions.protectLocalEditsDuringPull === true,
     replaceLocalState: pullOptions.replaceLocalState === true,
+    cloudAuthoritative: pullOptions.cloudAuthoritative !== false,
     onLocalChangesPreserved: () => { startupCloudWriteGate.deferWrite(); },
     pullCloudAndRewriteLocal,
-    applyAutoReconciledState: (parsedState) => {
-      // Apply a validated background merge without switching desks or scrolling
-      // the workspace; users can continue working while cloud state reconciles.
+    applyAutoReconciledState: (parsedState, cloudAuthoritative = false) => {
+      // A validated newer cloud revision replaces local financial state without
+      // merging journals. Normal background merges retain their existing path.
+      const migrationFallback: Partial<PortfolioState> = cloudAuthoritative
+        ? {
+          ...createBlankPortfolioState(),
+          closedTrades: Array.isArray(parsedState.closedTrades)
+            ? parsedState.closedTrades as PortfolioState['closedTrades']
+            : []
+        }
+        : state;
       const compatibleCloudState = migrateLegacyCloudHoldingsToPositions(
         parsedState as unknown as Partial<PortfolioState>,
-        state
+        migrationFallback
       );
-      const mergedState = { ...state, ...compatibleCloudState };
-      if (!portfolioStore.importState(loadSavedState(mergedState))) return false;
+      const mergedState = cloudAuthoritative
+        ? { ...createBlankPortfolioState(), ...compatibleCloudState, gatewaySecret: state.gatewaySecret }
+        : { ...state, ...compatibleCloudState };
+      const applied = cloudAuthoritative
+        ? portfolioStore.replaceFromAuthoritativeCloudSnapshot(mergedState)
+        : portfolioStore.importState(loadSavedState(mergedState));
+      if (!applied) return false;
       state = portfolioStore.getState();
       return true;
     },
@@ -2101,7 +2134,7 @@ const portfolioAuthenticatedStartupRuntime = createPortfolioAuthenticatedStartup
   pullSharedCloudState: async () => {
     try {
       setCloudStatus('syncing', 'CHECKING...');
-      return await syncCloudState('pull', { protectLocalEditsDuringPull: true });
+      return await syncCloudState('pull', { protectLocalEditsDuringPull: true, cloudAuthoritative: true });
     } finally {
       settleInitialWorkspaceSync();
     }

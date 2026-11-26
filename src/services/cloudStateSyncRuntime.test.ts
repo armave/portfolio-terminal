@@ -502,6 +502,53 @@ describe('startup cloud pull local-edit protection', () => {
     expect(fixture.statuses).toEqual(['conflict']);
     expect(fixture.getRevision()).toBe(0);
   });
+
+  it('adopts the validated cloud snapshot over local financial edits made during startup', async () => {
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT',
+      lastRolloverTimestamp: 100,
+      lastUpdated: 200
+    };
+    const fixture = createRuntime(remote);
+    const pull = fixture.runtime.pullCloudState({
+      ...fixture.options,
+      cloudAuthoritative: true
+    });
+    await fixture.fetchStarted;
+
+    fixture.setLocal({
+      ...fixture.base,
+      positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+      balance: 300,
+      lastUpdated: 250
+    });
+    fixture.resolveFetch(response(200, {
+      encryptedPayload: `aesgcm:v2:${encodeURIComponent(JSON.stringify(remote))}:nonce`
+    }, 2));
+
+    const result = await pull;
+
+    expect(result).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT'
+    });
+    expect(fixture.saved[0]).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600
+    });
+    expect(fixture.applied[0]).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600
+    });
+    expect(fixture.getPreservedLocalChanges()).toBe(0);
+    expect(fixture.statuses).toEqual(['synced']);
+    expect(fixture.getRevision()).toBe(2);
+  });
 });
 
 describe('background cloud conflict reconciliation', () => {
@@ -743,6 +790,58 @@ describe('background cloud conflict reconciliation', () => {
       operation: 'reconcile', outcome: 'conflict', reason: 'overlapping-edits',
       httpStatus: 200, expectedRevision: 1, observedRevision: 2
     }));
+  });
+
+  it('adopts the newest cloud snapshot after a 409 instead of merging local financial edits back', async () => {
+    let applied: Record<string, unknown> | undefined;
+    let appliedAsAuthoritative = false;
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT',
+      lastRolloverTimestamp: 100,
+      lastUpdated: 300
+    };
+    const { runtime, base, posted, counts } = createRuntime(remote);
+    const statuses: string[] = [];
+    const options = {
+      secret: 'test-secret',
+      cloudAuthoritative: true,
+      getState: () => ({
+        ...base,
+        positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+        balance: 300,
+        lastUpdated: 250
+      }) as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
+      applyAutoReconciledState: (state: Record<string, unknown>, cloudAuthoritative?: boolean) => {
+        applied = state;
+        appliedAsAuthoritative = cloudAuthoritative === true;
+        return true;
+      },
+      showToast: () => {},
+      logAppMessage: () => {},
+      onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status)
+    };
+
+    await runtime.pullCloudState(options);
+    statuses.length = 0;
+    expect(await runtime.pushCloudState(options.getState(), options)).toBe(true);
+
+    expect(appliedAsAuthoritative).toBe(true);
+    expect(applied).toMatchObject({
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT'
+    });
+    expect(statuses).toEqual(['synced']);
+    expect(posted).toHaveLength(1);
+    expect(counts()).toMatchObject({ getCount: 2, postCount: 1, revision: 2 });
+    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+      operation: 'reconcile', outcome: 'success', reason: 'auto-reconciled',
+      expectedRevision: 1, observedRevision: 2
+    });
   });
 
   it('leaves legacy embedded history to the normal migration flow', async () => {

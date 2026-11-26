@@ -3016,6 +3016,30 @@ describe('confirmed cloud snapshot replacement', () => {
     expect(store.getState().transactionEvents).toEqual([cloudEvent]);
     expect(store.getState().balance).toBe(previousBalance);
   });
+
+  it('replaces a conflicting local journal with the authoritative cloud journal', () => {
+    const store = new PortfolioStore();
+    const localEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 1_000,
+      note: 'Local event'
+    }, { eventId: 'authoritative-cloud-conflict-event', recordedAt: 1_001 });
+    const cloudEvent = createPortfolioTransactionEvent({
+      type: 'portfolio.reset',
+      effectiveAt: 2_000,
+      note: 'Cloud event'
+    }, { eventId: 'authoritative-cloud-conflict-event', recordedAt: 2_001 });
+
+    expect(store.importState({ transactionEvents: [localEvent] })).toBe(true);
+    const cloudSnapshot = {
+      ...store.getState(),
+      positions: {},
+      transactionEvents: [cloudEvent]
+    };
+
+    expect(store.replaceFromAuthoritativeCloudSnapshot(cloudSnapshot)).toBe(true);
+    expect(store.getState().transactionEvents).toEqual([cloudEvent]);
+  });
 });
 
 describe('portfolio transaction journal integration', () => {
