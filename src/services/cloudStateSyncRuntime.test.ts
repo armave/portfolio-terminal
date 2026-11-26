@@ -844,6 +844,48 @@ describe('background cloud conflict reconciliation', () => {
     });
   });
 
+  it('does not advance the accepted revision when authoritative cloud application fails', async () => {
+    const remote = {
+      positions: { AAPL: { ticker: 'AAPL', shares: 8 } },
+      balance: 600,
+      activeView: 'MSFT',
+      selectedTicker: 'MSFT',
+      lastRolloverTimestamp: 100,
+      lastUpdated: 300
+    };
+    const { runtime, base, posted, counts } = createRuntime(remote);
+    const statuses: string[] = [];
+    const options = {
+      secret: 'test-secret',
+      cloudAuthoritative: true,
+      getState: () => ({
+        ...base,
+        positions: { AAPL: { ticker: 'AAPL', shares: 12 } },
+        balance: 300,
+        lastUpdated: 250
+      }) as unknown as NonNullable<Parameters<typeof runtime.pushCloudState>[0]>,
+      applyAutoReconciledState: () => false,
+      showToast: () => {},
+      logAppMessage: () => {},
+      onStatusChange: (status: 'synced' | 'error' | 'conflict') => statuses.push(status)
+    };
+
+    await runtime.pullCloudState(options);
+    expect(counts().revision).toBe(1);
+    expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
+
+    expect(counts()).toMatchObject({ getCount: 2, postCount: 1, revision: 1 });
+    expect(posted).toHaveLength(1);
+    expect(statuses).toEqual(['conflict']);
+    expect(getCloudSyncDiagnostics()[0]).toMatchObject({
+      operation: 'reconcile',
+      outcome: 'conflict',
+      reason: 'local-apply-rejected',
+      expectedRevision: 1,
+      observedRevision: 2
+    });
+  });
+
   it('leaves legacy embedded history to the normal migration flow', async () => {
     let applied = false;
     const remote = {

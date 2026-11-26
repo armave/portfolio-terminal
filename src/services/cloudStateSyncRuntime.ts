@@ -730,11 +730,13 @@ async function tryAutoReconcileCloudConflict(
     if (handlers.cloudAuthoritative === true) {
       // A 409 means the server has a newer accepted revision. Adopt that exact
       // validated snapshot instead of merging stale device financial state back.
-      revisionCoordinator.recordPulledRevision(latestRevision);
       const applied = applyReconciledState(remoteState, true);
       if (applied === false || !isCurrentSession()) {
         return fail('local-apply-rejected', response.status, latestRevision);
       }
+      // Trust the new server revision only after the canonical local commit has
+      // accepted the cloud snapshot and the authenticated session is still current.
+      revisionCoordinator.recordPulledRevision(latestRevision);
 
       cloudStateBaseSnapshots.set(secret, remoteState);
       cloudStatePushFingerprints.set(secret, remoteFingerprint);
