@@ -871,6 +871,7 @@ describe('background cloud conflict reconciliation', () => {
     };
 
     await runtime.pullCloudState(options);
+    statuses.length = 0;
     expect(counts().revision).toBe(1);
     expect(await runtime.pushCloudState(options.getState(), options)).toBe(false);
 
