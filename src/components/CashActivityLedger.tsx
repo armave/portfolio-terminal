@@ -122,7 +122,14 @@ function cashImpact(row: CashActivityRow): number | null {
 function qualityLabel(row: CashActivityRow): string {
   if (row.legacyManual) return 'Historical manual entry · unverified';
   if (row.quality === 'verified') return 'Provider ID / app record';
-  if (row.quality === 'provisional') return 'Provisional source identity';
+  if (row.quality === 'provisional') {
+    if (row.identityQuality === 'fallback') return 'Provisional source identity';
+    if (!row.currency) return 'Missing currency · provisional';
+    if (row.timestamp === null) return 'Missing date · provisional';
+    if (!hasKnownCashflowDirection(row.category) && row.category !== 'order_reservation')
+      return 'Cash impact unavailable · provisional';
+    return 'Provisional record';
+  }
   return row.identityQuality === 'provider'
     ? 'Unclassified · provider ID'
     : 'Unclassified · provisional ID';
@@ -352,7 +359,7 @@ export function CashActivityLedger() {
           <div class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-amber-200">
             <span>{translateText('Data quality details:', getAppLanguage())}</span>
             {unclassifiedCount > 0 && <span>{unclassifiedCount} {translateText('unclassified operations', getAppLanguage())}</span>}
-            {provisionalCount > 0 && <span>{provisionalCount} {translateText('provisional identities', getAppLanguage())}</span>}
+            {provisionalCount > 0 && <span>{provisionalCount} {translateText('provisional records', getAppLanguage())}</span>}
             {missingAmountCount > 0 && <span>{missingAmountCount} {translateText('missing amounts', getAppLanguage())}</span>}
             {missingDateCount > 0 && <span>{missingDateCount} {translateText('missing dates', getAppLanguage())}</span>}
             {missingCurrencyCount > 0 && <span>{missingCurrencyCount} {translateText('missing currencies', getAppLanguage())}</span>}

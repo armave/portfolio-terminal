@@ -55,13 +55,15 @@ describe('app localization', () => {
       'records have incomplete classification, amount, currency, date or source identity. They remain visible and are excluded from USD totals.',
       'Other-currency records are shown but excluded from USD summary totals.',
       'Provider ID / app record', 'Provisional source identity',
+      'Missing currency · provisional', 'Missing date · provisional',
+      'Cash impact unavailable · provisional', 'Provisional record',
       'Unclassified source row', 'Trade settlement', 'Order reservation',
       'Reservation only · no settled cash impact', 'order reservations / releases',
       'Net cash result · USD',
       'Verified inflows less outflows across the current filters · not realized trading P&L',
       'Unclassified · provider ID', 'Unclassified · provisional ID',
       'Broker-reported amount', 'Show full description', 'Data quality details:',
-      'unclassified operations', 'provisional identities', 'missing amounts', 'missing dates',
+      'unclassified operations', 'provisional records', 'missing amounts', 'missing dates',
       'missing currencies', 'Data-quality reason counts may overlap.', 'Debt only'
     ];
     for (const copy of cashActivityCopy) expect(translateText(copy, 'ru'), copy).not.toBe(copy);
