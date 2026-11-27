@@ -101,6 +101,21 @@ describe('shared cashflow classification', () => {
     expect(classifyCashflow({ type: 'Dividend Reinvestment' }).classified).toBe(false);
   });
 
+  it('classifies corporate-action tax as a tax cashflow without broadening generic corporate actions', () => {
+    const description = 'Corporate action tax on security ( META.US ), record date 2026-09-21. Tax rate 30';
+    expect(classifyCashflow({
+      type: '124547994',
+      description
+    })).toMatchObject({ category: 'tax', eventType: 'fee', classified: true });
+    expect(hasKnownCashflowDirection('tax')).toBe(true);
+    expect(normalizeClassifiedCashflowAmount('tax', 2.67, description)).toBe(-2.67);
+    expect(normalizeClassifiedCashflowAmount('tax', -2.67, description)).toBe(-2.67);
+    expect(classifyCashflow({
+      type: '123',
+      description: 'Corporate action on security (META.US), record date 2026-09-21'
+    })).toMatchObject({ category: 'corporate_action', eventType: 'corporate-action', classified: true });
+  });
+
   it('classifies tax separately from commission even though both use fee journal events', () => {
     expect(classifyCashflow({ type: 'Tax withheld' })).toMatchObject({
       category: 'tax', eventType: 'fee', classified: true
