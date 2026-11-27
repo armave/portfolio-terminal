@@ -2,9 +2,9 @@
 
 ## Status
 
-**Read-only Cash Activity production release verified — 2026-11-25.** The read-only implementation was merged to `dev` through [PR #734](https://github.com/armave/portfolio-terminal/pull/734) (merge commit `90f569578cf64ec35a76ca0d44f68e62a333699f`) and promoted to production `main` through [PR #735](https://github.com/armave/portfolio-terminal/pull/735). Production `main` is at `1abbb454ca5d23dd2794c35bad3fb0bb529e90f7`. Exact-main [Pull Request CI run #5402](https://github.com/armave/portfolio-terminal/actions/runs/45567590652) and [Security & Workflow Validation run #1210](https://github.com/armave/portfolio-terminal/actions/runs/45567590649) passed. The Pages pipeline validated the same-run build provenance and same-commit security gate, deployed the `github-pages` artifact with that exact SHA, and passed the published-site HTTP/content smoke check at [the production app](https://armave.github.io/portfolio-terminal/).
+**Read-only Cash Activity is deployed to production.** The original ledger release was merged through [PR #734](https://github.com/armave/portfolio-terminal/pull/734) and promoted through [PR #735](https://github.com/armave/portfolio-terminal/pull/735). On 2026-11-27, the production Worker cashflow endpoint was updated to retrieve and validate all TradeNet history pages. The deployed Worker commit is `fe24abbc653bcc5db152b1c1d58eda8fb953c6dd`; the post-deployment health endpoint verified that exact SHA in [Worker deployment run #45925587955](https://github.com/armave/portfolio-terminal/actions/runs/45925587955). The latest provider-field classification, data-quality presentation, and mobile card refinements in this document are delivered through the current focused client PR to `dev` and require their own production promotion.
 
-This confirms the application release path and published shell. CI browser journeys use deterministic fixtures; it does not certify live authenticated TradeNet behavior, live Market Depth, or broker-side transaction submission.
+CI browser journeys use deterministic fixtures. They do not certify live authenticated TradeNet records, live Market Depth, or broker-side transaction submission.
 
 ## User experience
 
