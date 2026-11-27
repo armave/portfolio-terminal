@@ -31,7 +31,8 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain("row.category === 'order_reservation'");
     expect(source).toContain("translateText('Reservation only · no settled cash impact'");
     expect(source).toContain("translateText('order reservations / releases'");
-    expect(source).toContain("category: 'trade'");
+    expect(source).toContain('typeCode: raw.type_code');
+    expect(source).toContain('category: classification.category');
     expect(source).toContain('hasKnownCashflowDirection(classification.category)');
     expect(source).toContain("or because they are not settled cash movements.");
   });
