@@ -102,7 +102,8 @@ describe('Cash Activity read-only ledger', () => {
 
   it('retains the distinction between cash movement and debt-only margin interest', () => {
     const source = readSource();
-    expect(source).toContain('const signedDisplay = row.debtOnly');
+    expect(source).toContain('function cashImpact(row: CashActivityRow): number | null');
+    expect(source).toContain('return row.debtOnly');
     expect(source).toContain(': row.signedCash;');
     expect(source).toContain("translateText('Debt only'");
     expect(source).toContain("translateText('Cash / debt impact'");
