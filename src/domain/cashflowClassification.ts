@@ -100,6 +100,12 @@ export function classifyCashflow(input: CashflowClassificationInput): CashflowCl
 
   if (has(/\b(dividend reinvestment|reinvested distribution|reinvestment of dividend)\b/))
     return { category: 'unclassified', eventType: null, classified: false };
+  // Explicit corporate-action tax descriptions are cash taxes, not generic
+  // non-cash corporate-action audit events. Keep this narrow and ahead of the
+  // broader corporate-action wording so only an explicit tax label gains a
+  // settled cash direction.
+  if (has(/\bcorporate action tax\b/))
+    return { category: 'tax', eventType: 'fee', classified: true };
   if (has(/\b(stock split|reverse split|merger|spin off|reorganization|reorganisation|corporate action|symbol change|cash in lieu)\b/))
     return { category: 'corporate_action', eventType: 'corporate-action', classified: true };
   if (has(/\b(withholding tax|tax withheld|tax|vat)\b/))

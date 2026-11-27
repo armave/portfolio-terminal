@@ -91,7 +91,17 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain("row.identityQuality === 'provider'");
     expect(source).toContain("translateText('Data quality details:'");
     expect(source).toContain("translateText('unclassified operations'");
-    expect(source).toContain("translateText('provisional identities'");
+    expect(source).toContain("translateText('provisional records'");
+  });
+
+  it('explains why provisional rows are not verified without conflating missing currency with missing identity', () => {
+    const source = readSource();
+    expect(source).toContain("if (row.identityQuality === 'fallback') return 'Provisional source identity';");
+    expect(source).toContain("if (!row.currency) return 'Missing currency · provisional';");
+    expect(source).toContain("if (row.timestamp === null) return 'Missing date · provisional';");
+    expect(source).toContain("return 'Provisional record';");
+    expect(source).toContain("const provisionalCount = filteredRows.filter(row => row.quality === 'provisional').length;");
+    expect(source).toContain("row.quality === 'verified' && row.currency === 'USD'");
   });
 
   it('uses eligible verified USD rows only and shows coverage before interpreting totals', () => {
