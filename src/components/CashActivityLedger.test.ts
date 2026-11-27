@@ -24,6 +24,19 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain('<TablePagination');
   });
 
+  it('renders trade settlements as signed cash legs and order holds as non-settled reservations', () => {
+    const source = readSource();
+    expect(source).toContain("trade: 'Trade settlement'");
+    expect(source).toContain("order_reservation: 'Order reservation'");
+    expect(source).toContain("row.category === 'order_reservation'");
+    expect(source).toContain("translateText('Reservation only · no settled cash impact'");
+    expect(source).toContain("translateText('order reservations / releases'");
+    expect(source).toContain('typeCode: raw.type_code');
+    expect(source).toContain('category: classification.category');
+    expect(source).toContain('hasKnownCashflowDirection(classification.category)');
+    expect(source).toContain("or because they are not settled cash movements.");
+  });
+
   it('does not expose a manual cash posting form or store mutation', () => {
     const source = readSource();
     expect(source).not.toContain('<form');
@@ -87,6 +100,7 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain('row.amount !== null && row.timestamp !== null && row.signedCash !== null');
     expect(source).toContain("translateText('verified USD cash movements included in totals.'");
     expect(source).toContain("translateText('records are excluded from verified USD totals");
+    expect(source).toContain("translateText('order reservations / releases'");
     expect(source).toContain("translateText('Margin interest recorded separately'");
   });
 

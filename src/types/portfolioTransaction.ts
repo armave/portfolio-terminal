@@ -3,6 +3,7 @@ export const PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION = 1 as const;
 export type CashflowCategory =
   | 'deposit' | 'withdrawal' | 'dividend' | 'interest_income'
   | 'commission' | 'fee' | 'tax' | 'margin_interest'
+  | 'trade' | 'order_reservation'
   | 'transfer' | 'adjustment' | 'correction' | 'corporate_action' | 'unclassified';
 
 export type PortfolioTransactionEventType =
