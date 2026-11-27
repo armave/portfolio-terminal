@@ -293,6 +293,16 @@ export function ClosedHistoryDesk({ accountId, canViewCashActivity = false, isSe
         }
       }
     });
+
+    // On the Cash Activity view, the shared refresh action also performs a
+    // full paginated cashflow backfill. A cursor-based refresh cannot recover
+    // older rows that were missing from a previously accepted baseline.
+    if (showCashActivity && cashflowHistoryReady) {
+      cashflowSyncStarted.current = true;
+      setCashflowSyncMessage('');
+      setCashflowSyncReady(false);
+      void requestClosedHistorySync('refresh', true).then(reportClosedHistorySync);
+    }
   };
   useEffect(() => addBrokerEventListener('broker:executed-trades-refresh-complete', (refresh) => {
     if (refresh.source === 'rest' && refresh.sessionIdentity === `admin:${accountId}` && isSessionCurrent()) {
