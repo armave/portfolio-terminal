@@ -36,6 +36,50 @@ describe('shared cashflow classification', () => {
     })).toMatchObject({ category: 'fee', eventType: 'fee', classified: true });
   });
 
+  it('classifies TradeNet trade settlements without turning them into income or journal cash events', () => {
+    expect(classifyCashflow({
+      type: 'Last',
+      typeCode: 'trade',
+      typeCodeName: 'Last'
+    })).toMatchObject({ category: 'trade', eventType: null, classified: true });
+    expect(classifyCashflow({
+      type: 'TRADE-712663259-USD',
+      description: 'Sell 3 META.US (trade #712663259)'
+    })).toMatchObject({ category: 'trade', eventType: null, classified: true });
+    expect(classifyCashflow({
+      type: 'TRADE-712609052-USD',
+      description: 'Buy 10 GOOGL.US (trade #712609052)'
+    })).toMatchObject({ category: 'trade', eventType: null, classified: true });
+    expect(hasKnownCashflowDirection('trade')).toBe(true);
+    expect(normalizeClassifiedCashflowAmount('trade', -2820)).toBe(-2820);
+    expect(normalizeClassifiedCashflowAmount('trade', 1896)).toBe(1896);
+  });
+
+  it('classifies reserved and released order funds without inventing settled cash impact', () => {
+    expect(classifyCashflow({
+      type: 'Block',
+      description: 'Debiting funds under order 73781598',
+      typeCode: 'block'
+    })).toMatchObject({ category: 'order_reservation', eventType: null, classified: true });
+    expect(classifyCashflow({
+      type: 'Unblock',
+      description: 'Debiting funds under order 73781598',
+      typeCode: 'unblock'
+    })).toMatchObject({ category: 'order_reservation', eventType: null, classified: true });
+    expect(classifyCashflow({
+      type: 'Block. Debiting funds under order 73781598'
+    }).category).toBe('order_reservation');
+    expect(hasKnownCashflowDirection('order_reservation')).toBe(false);
+  });
+
+  it('recognizes plural dividend descriptions without treating reinvestment as cash income', () => {
+    expect(classifyCashflow({
+      type: '90941732',
+      description: 'Dividends on security (Lilly (Eli) & Co. (LLY.US)), record date 2025-05-16'
+    })).toMatchObject({ category: 'dividend', eventType: 'dividend', classified: true });
+    expect(classifyCashflow({ type: 'Dividend Reinvestment' }).classified).toBe(false);
+  });
+
   it('ignores unrelated raw fields and keeps genuinely ambiguous margin rows unclassified', () => {
     expect(classifyCashflow({
       type: 'Account adjustment',

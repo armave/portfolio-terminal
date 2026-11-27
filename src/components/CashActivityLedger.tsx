@@ -77,6 +77,8 @@ function categoryLabel(category: CashflowCategory): string {
     fee: 'Fee',
     tax: 'Tax',
     margin_interest: 'Margin interest',
+    trade: 'Trade settlement',
+    order_reservation: 'Order reservation',
     transfer: 'Transfer',
     adjustment: 'Adjustment',
     correction: 'Correction',
@@ -171,7 +173,8 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
       source: 'TradeNet',
       quality: !classification.classified
         ? 'unclassified'
-        : !hasKnownCashflowDirection(classification.category) || fallbackIdentity || !rowCurrency || rowTimestamp === null
+        : (!hasKnownCashflowDirection(classification.category) && classification.category !== 'order_reservation') ||
+            fallbackIdentity || !rowCurrency || rowTimestamp === null
           ? 'provisional'
           : 'verified'
     });
@@ -303,6 +306,7 @@ export function CashActivityLedger() {
   const missingAmountCount = filteredRows.filter(row => row.amount === null).length;
   const missingDateCount = filteredRows.filter(row => row.timestamp === null).length;
   const missingCurrencyCount = filteredRows.filter(row => !row.currency).length;
+  const orderReservationCount = filteredRows.filter(row => row.category === 'order_reservation').length;
   const hasVerifiedUsdCashActivity = usdRows.length > 0;
   const netUsdMovement = knownInflows - knownOutflows;
   const netMovementTone = netUsdMovement > 0
@@ -348,10 +352,10 @@ export function CashActivityLedger() {
         <span>{usdRows.length} {translateText('verified USD cash movements included in totals.', getAppLanguage())}</span>
         {excludedCount > 0 && (
           <span role="status" class="text-amber-300">
-            {excludedCount} {translateText('records are excluded from verified USD totals because their classification, amount, currency, date or source identity is incomplete or unverified.', getAppLanguage())}
+            {excludedCount} {translateText('records are excluded from verified USD totals because their classification, amount, currency, date or source identity is incomplete or unverified, or because they are not settled cash movements.', getAppLanguage())}
           </span>
         )}
-        {(unclassifiedCount > 0 || provisionalCount > 0 || missingAmountCount > 0 || missingDateCount > 0 || missingCurrencyCount > 0) && (
+        {(unclassifiedCount > 0 || provisionalCount > 0 || missingAmountCount > 0 || missingDateCount > 0 || missingCurrencyCount > 0 || orderReservationCount > 0) && (
           <div class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-amber-200">
             <span>{translateText('Data quality details:', getAppLanguage())}</span>
             {unclassifiedCount > 0 && <span>{unclassifiedCount} {translateText('unclassified operations', getAppLanguage())}</span>}
@@ -359,6 +363,7 @@ export function CashActivityLedger() {
             {missingAmountCount > 0 && <span>{missingAmountCount} {translateText('missing amounts', getAppLanguage())}</span>}
             {missingDateCount > 0 && <span>{missingDateCount} {translateText('missing dates', getAppLanguage())}</span>}
             {missingCurrencyCount > 0 && <span>{missingCurrencyCount} {translateText('missing currencies', getAppLanguage())}</span>}
+            {orderReservationCount > 0 && <span>{orderReservationCount} {translateText('order reservations / releases', getAppLanguage())}</span>}
             <span>{translateText('Data-quality reason counts may overlap.', getAppLanguage())}</span>
           </div>
         )}
@@ -472,6 +477,9 @@ export function CashActivityLedger() {
                       <div>
                         <p class="text-[10px] uppercase tracking-wide text-slate-500">{translateText('Cash / debt impact', getAppLanguage())}</p>
                         <p class={'mt-1 font-mono font-semibold tabular-nums ' + amountTone}>{signedAmountText(signedDisplay, row.currency)}</p>
+                        {row.category === 'order_reservation' && (
+                          <p class="mt-0.5 text-[10px] text-slate-500">{translateText('Reservation only · no settled cash impact', getAppLanguage())}</p>
+                        )}
                       </div>
                     </div>
                   </article>
@@ -524,6 +532,9 @@ export function CashActivityLedger() {
                         </td>
                         <td class={'whitespace-nowrap px-3 py-3 text-right font-mono text-sm font-semibold tabular-nums ' + amountTone}>
                           {signedDisplay === null ? '—' : signedAmountText(signedDisplay, row.currency)}
+                          {row.category === 'order_reservation' && (
+                            <p class="mt-1 text-left text-[10px] font-sans font-normal text-slate-500">{translateText('Reservation only · no settled cash impact', getAppLanguage())}</p>
+                          )}
                         </td>
                       </tr>
                     );
