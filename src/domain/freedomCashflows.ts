@@ -65,19 +65,72 @@ function normalizeDate(value: unknown): string {
   return stringifyRawValue(value).trim();
 }
 
-function isUsableDate(value: string): boolean {
+const EXCEL_DATE_EPOCH_MS = Date.UTC(1899, 11, 30);
+const EXCEL_DAY_MS = 86_400_000;
+
+export interface ParsedFreedomCashflowDate {
+  timestamp: number;
+  dateOnly: boolean;
+}
+
+function makeParsedDate(timestamp: number, dateOnly: boolean): ParsedFreedomCashflowDate | null {
+  const rounded = Math.round(timestamp);
+  if (!Number.isSafeInteger(rounded) || rounded <= 0 || !Number.isFinite(new Date(rounded).getTime())) return null;
+  return { timestamp: rounded, dateOnly };
+}
+
+function parseUtcCalendarDate(year: number, month: number, day: number): number | null {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(0, 0, 0, 0);
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? date.getTime()
+    : null;
+}
+
+/** Parse broker cashflow dates while distinguishing Excel serials from calendar-year strings. */
+export function parseFreedomCashflowDate(value: unknown): ParsedFreedomCashflowDate | null {
+  if (value instanceof Date) return makeParsedDate(value.getTime(), false);
+  if (typeof value === "number") {
+    if (value > 20_000 && value < 100_000) return makeParsedDate(EXCEL_DATE_EPOCH_MS + value * EXCEL_DAY_MS, Number.isInteger(value));
+    if (value > 1_000_000_000_000) return makeParsedDate(value, false);
+    if (value > 1_000_000_000) return makeParsedDate(value * 1000, false);
+    return null;
+  }
+  if (typeof value !== "string") return null;
   const text = value.trim();
-  if (!text) return false;
-  const serial = Number(text);
-  if (/^\d{4,6}(?:\.\d+)?$/.test(text) && serial > 20000 && serial < 100000) return true;
+  if (!text) return null;
+  if (/^\d{4,6}(?:\.\d+)?$/.test(text)) {
+    const serial = Number(text);
+    return serial > 20_000 && serial < 100_000
+      ? makeParsedDate(EXCEL_DATE_EPOCH_MS + serial * EXCEL_DAY_MS, Number.isInteger(serial))
+      : null;
+  }
+  if (/^\d{10}$/.test(text)) {
+    const seconds = Number(text);
+    return seconds > 1_000_000_000 ? makeParsedDate(seconds * 1000, false) : null;
+  }
+  if (/^\d{13}$/.test(text)) {
+    const milliseconds = Number(text);
+    return milliseconds > 1_000_000_000_000 ? makeParsedDate(milliseconds, false) : null;
+  }
+  if (/^\d+(?:\.\d+)?$/.test(text)) return null;
   const dmy = text.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
   if (dmy) {
-    const date = new Date(Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1])));
-    return date.getUTCFullYear() === Number(dmy[3]) &&
-      date.getUTCMonth() === Number(dmy[2]) - 1 &&
-      date.getUTCDate() === Number(dmy[1]);
+    const timestamp = parseUtcCalendarDate(Number(dmy[3]), Number(dmy[2]), Number(dmy[1]));
+    return timestamp === null ? null : makeParsedDate(timestamp, true);
   }
-  return Number.isFinite(Date.parse(text));
+  const isoDate = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDate) {
+    const timestamp = parseUtcCalendarDate(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]));
+    return timestamp === null ? null : makeParsedDate(timestamp, true);
+  }
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? makeParsedDate(parsed, false) : null;
+}
+
+function isUsableDate(value: string): boolean {
+  return parseFreedomCashflowDate(value) !== null;
 }
 
 function parseAmount(value: unknown): number | null {
@@ -249,21 +302,9 @@ export function getFreedomCashflowRefreshStartDate(
   const rows = normalizeSavedFreedomCashflows(values);
   let latestDay = Number.NEGATIVE_INFINITY;
   for (const row of rows) {
-    const text = String(row.date || '').trim();
-    let timestamp = NaN;
-    const excelSerial = Number(text);
-    if (/^\d{4,6}(?:\.\d+)?$/.test(text) && excelSerial > 20000 && excelSerial < 100000) {
-      timestamp = Date.UTC(1899, 11, 30) + excelSerial * 86_400_000;
-    } else {
-      const dmy = text.match(/^(\d{1,2})[.-](\d{1,2})[.-](\d{4})$/);
-      if (dmy) {
-        timestamp = Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
-      } else {
-        timestamp = Date.parse(text);
-      }
-    }
-    if (!Number.isFinite(timestamp)) continue;
-    const date = new Date(timestamp);
+    const parsedDate = parseFreedomCashflowDate(row.date);
+    if (!parsedDate) continue;
+    const date = new Date(parsedDate.timestamp);
     const utcDay = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
     if (utcDay > latestDay) latestDay = utcDay;
   }

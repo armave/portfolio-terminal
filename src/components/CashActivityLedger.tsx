@@ -3,6 +3,7 @@ import { usePortfolioSelector } from '../store/portfolioStore';
 import type { PortfolioState } from '../types/portfolio';
 import type { CashflowCategory, PortfolioTransactionEvent } from '../types/portfolioTransaction';
 import { classifyCashflow, hasKnownCashflowDirection, normalizeClassifiedCashflowAmount } from '../domain/cashflowClassification';
+import { parseFreedomCashflowDate } from '../domain/freedomCashflows';
 import { getAppLanguage, translateText } from '../services/i18n';
 import { formatUSD } from '../utils/formatters';
 import { TablePagination } from './TablePagination';
@@ -19,6 +20,7 @@ interface CashActivitySnapshot {
 interface CashActivityRow {
   id: string;
   timestamp: number | null;
+  dateOnly?: boolean;
   category: CashflowCategory;
   description: string;
   amount: number | null;
@@ -43,16 +45,6 @@ function equalSnapshot(left: CashActivitySnapshot, right: CashActivitySnapshot):
     left.transactionEvents === right.transactionEvents &&
     left.cashCushion === right.cashCushion &&
     left.balance === right.balance;
-}
-
-function parseTimestamp(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const timestamp = value > 1e12 ? value : value > 1e9 ? value * 1000 : NaN;
-    return Number.isSafeInteger(timestamp) && timestamp > 0 ? timestamp : null;
-  }
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function categoryFromEvent(event: PortfolioTransactionEvent): CashflowCategory {
@@ -101,11 +93,13 @@ function formatMoney(amount: number | null, currency?: string): string {
   return new Intl.NumberFormat(locale, { style: 'currency', currency, maximumFractionDigits: 2 }).format(Math.abs(amount));
 }
 
-function formatDate(timestamp: number | null): string {
+function formatDate(timestamp: number | null, dateOnly = false): string {
   if (timestamp === null) return '—';
-  return new Intl.DateTimeFormat(getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US', {
-    dateStyle: 'medium', timeStyle: 'short'
-  }).format(timestamp);
+  const locale = getAppLanguage() === 'ru' ? 'ru-RU' : 'en-US';
+  const options: Intl.DateTimeFormatOptions = dateOnly
+    ? { dateStyle: 'medium', timeZone: 'UTC' }
+    : { dateStyle: 'medium', timeStyle: 'short' };
+  return new Intl.DateTimeFormat(locale, options).format(timestamp);
 }
 
 function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
@@ -120,10 +114,12 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
     const rowCurrency = typeof row.currency === 'string' && /^[A-Z]{3}$/i.test(row.currency.trim())
       ? row.currency.trim().toUpperCase()
       : undefined;
-    const rowTimestamp = parseTimestamp(row.date);
+    const parsedDate = parseFreedomCashflowDate(row.date);
+    const rowTimestamp = parsedDate?.timestamp ?? null;
     rows.push({
       id: 'broker:' + row.id,
       timestamp: rowTimestamp,
+      dateOnly: parsedDate?.dateOnly ?? false,
       category: classification.category,
       description: description || translateText('Broker cashflow', getAppLanguage()),
       amount: amount === null || !classification.classified
@@ -210,12 +206,19 @@ export function CashActivityLedger() {
         : periodFilter === 'year'
           ? new Date(new Date().getFullYear(), 0, 1).getTime()
           : null;
+    const periodStartDate = startAt === null ? null : new Date(startAt);
     const query = search.trim().toLowerCase();
     return rows.filter(row => {
       if (categoryFilter !== 'all' && row.category !== categoryFilter) return false;
       if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
       if (qualityFilter !== 'all' && row.quality !== qualityFilter) return false;
-      if (startAt !== null && (row.timestamp === null || row.timestamp < startAt)) return false;
+      if (startAt !== null) {
+        if (row.timestamp === null) return false;
+        const rowPeriodStart = row.dateOnly && periodStartDate
+          ? Date.UTC(periodStartDate.getFullYear(), periodStartDate.getMonth(), periodStartDate.getDate())
+          : startAt;
+        if (row.timestamp < rowPeriodStart) return false;
+      }
       const searchableText = [
         row.id, row.description, categoryLabel(row.category), row.currency || '',
         row.source, row.quality, row.legacyManual ? 'historical manual entry' : ''
@@ -237,17 +240,30 @@ export function CashActivityLedger() {
     pagination.setPage(1);
   };
 
-  const usdRows = filteredRows.filter(row => row.quality === 'verified' && row.currency === 'USD' && !row.debtOnly && row.signedCash !== null);
-  const knownInflows = usdRows.reduce((sum, row) => sum + Math.max(0, row.signedCash || 0), 0);
-  const knownOutflows = usdRows.reduce((sum, row) => sum + Math.max(0, -(row.signedCash || 0)), 0);
-  const marginInterest = filteredRows
-    .filter(row => row.quality === 'verified' && row.category === 'margin_interest' && row.currency === 'USD' && row.amount !== null)
-    .reduce((sum, row) => sum + (row.debtOnly ? (row.amount || 0) : -(row.signedCash || 0)), 0);
+  const usdRows = filteredRows.filter(row =>
+    row.quality === 'verified' && row.currency === 'USD' && !row.debtOnly &&
+    row.amount !== null && row.timestamp !== null && row.signedCash !== null
+  );
+  const knownInflows = usdRows.reduce((sum, row) => sum + Math.max(0, row.signedCash!), 0);
+  const knownOutflows = usdRows.reduce((sum, row) => sum + Math.max(0, -row.signedCash!), 0);
+  const marginInterestRows = filteredRows.filter(row =>
+    row.quality === 'verified' && row.category === 'margin_interest' && row.currency === 'USD' &&
+    row.amount !== null && row.timestamp !== null &&
+    (row.debtOnly ? row.signedDebt !== null && row.signedDebt !== undefined : row.signedCash !== null)
+  );
+  const marginInterest = marginInterestRows.reduce((sum, row) =>
+    sum + (row.debtOnly ? row.amount! : -row.signedCash!), 0);
   const otherCurrencyCount = filteredRows.filter(row => row.currency && row.currency !== 'USD').length;
-  const unknownCount = filteredRows.filter(row =>
+  const excludedCount = filteredRows.filter(row =>
     row.quality !== 'verified' || row.amount === null || !row.currency || row.timestamp === null ||
-      (row.debtOnly ? row.signedDebt === null : row.signedCash === null)
+      (row.debtOnly ? row.signedDebt === null || row.signedDebt === undefined : row.signedCash === null)
   ).length;
+  const hasVerifiedUsdCashActivity = usdRows.length > 0;
+  const netUsdMovement = knownInflows - knownOutflows;
+  const netMovementTone = netUsdMovement > 0
+    ? 'text-emerald-300'
+    : netUsdMovement < 0 ? 'text-rose-300' : 'text-slate-100';
+  const netMovementSign = netUsdMovement > 0 ? '+' : netUsdMovement < 0 ? '−' : '';
   const currentCash = typeof snapshot.cashCushion?.freeCash === 'number' &&
     Number.isFinite(snapshot.cashCushion.freeCash) ? snapshot.cashCushion.freeCash : null;
   const currentDebt = typeof snapshot.balance === 'number' && Number.isFinite(snapshot.balance)
@@ -255,10 +271,12 @@ export function CashActivityLedger() {
 
   const currencyAmount = (value: number | null, sign = '') =>
     value === null ? '—' : sign + formatMoney(value, 'USD');
+  const historyAmount = (value: number, sign = '') =>
+    hasVerifiedUsdCashActivity ? currencyAmount(value, sign) : '—';
 
   return (
     <section class="space-y-4" aria-label={translateText('Cash Activity ledger', getAppLanguage())}>
-      <div class="grid grid-cols-2 gap-2 xl:grid-cols-4">
+      <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Current available USD cash', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold tabular-nums text-slate-100">{currencyAmount(currentCash)}</p>
@@ -269,23 +287,32 @@ export function CashActivityLedger() {
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Filtered verified inflows · USD', getAppLanguage())}</p>
-          <p class="mt-1 font-mono text-lg font-bold tabular-nums text-emerald-300">{currencyAmount(knownInflows, '+')}</p>
+          <p class="mt-1 font-mono text-lg font-bold tabular-nums text-emerald-300">{historyAmount(knownInflows, knownInflows > 0 ? '+' : '')}</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Filtered verified outflows · USD', getAppLanguage())}</p>
-          <p class="mt-1 font-mono text-lg font-bold tabular-nums text-rose-300">{currencyAmount(knownOutflows, '−')}</p>
-          {Math.abs(marginInterest) > 0 && <p class="mt-1 text-[10px] text-slate-500">{translateText('Margin interest recorded', getAppLanguage())}: {marginInterest < 0 ? '−' : ''}{formatMoney(marginInterest, 'USD')}</p>}
+          <p class="mt-1 font-mono text-lg font-bold tabular-nums text-rose-300">{historyAmount(knownOutflows, knownOutflows > 0 ? '−' : '')}</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Filtered verified net USD movement', getAppLanguage())}</p>
+          <p class={'mt-1 font-mono text-lg font-bold tabular-nums ' + netMovementTone}>{historyAmount(netUsdMovement, netMovementSign)}</p>
         </div>
       </div>
 
-      {unknownCount > 0 && (
-        <p role="status" class="rounded border border-amber-800/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-200">
-          {unknownCount} {translateText('records have incomplete classification, amount, currency, date or source identity. They remain visible and are excluded from USD totals.', getAppLanguage())}
-        </p>
-      )}
-      {otherCurrencyCount > 0 && (
-        <p class="text-[10px] text-slate-500">{translateText('Other-currency records are shown but excluded from USD summary totals.', getAppLanguage())}</p>
-      )}
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-500">
+        <span>{usdRows.length} {translateText('verified USD cash movements included in totals.', getAppLanguage())}</span>
+        {excludedCount > 0 && (
+          <span role="status" class="text-amber-300">
+            {excludedCount} {translateText('records are excluded from verified USD totals because their classification, amount, currency, date or source identity is incomplete or unverified.', getAppLanguage())}
+          </span>
+        )}
+        {otherCurrencyCount > 0 && (
+          <span>{otherCurrencyCount} {translateText('non-USD records are excluded from USD totals.', getAppLanguage())}</span>
+        )}
+        {Math.abs(marginInterest) > 0 && (
+          <span>{translateText('Margin interest recorded separately', getAppLanguage())}: {currencyAmount(marginInterest, marginInterest > 0 ? '+' : marginInterest < 0 ? '−' : '')}</span>
+        )}
+      </div>
 
       <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
         <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
@@ -343,8 +370,8 @@ export function CashActivityLedger() {
         </div>
 
         <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
-          <span>{filteredRows.length} {translateText('records shown', getAppLanguage())} · {rows.length} {translateText('total records', getAppLanguage())}</span>
-          <span>{translateText('Summary reflects current filters', getAppLanguage())} · {translateText('Filtered net USD movement', getAppLanguage())}: {currencyAmount(knownInflows - knownOutflows, knownInflows >= knownOutflows ? '+' : '−')}</span>
+          <span>{filteredRows.length} {translateText('records match filters', getAppLanguage())} · {rows.length} {translateText('total records', getAppLanguage())}</span>
+          <span>{translateText('Current cash and debt are account-state values. History totals include all records matching filters, not only the current page.', getAppLanguage())}</span>
         </div>
 
         {filteredRows.length === 0 ? (
@@ -384,7 +411,7 @@ export function CashActivityLedger() {
                           : 'Unclassified source row';
                     return (
                       <tr key={row.id} class="align-top transition-colors hover:bg-slate-900/40">
-                        <td class="whitespace-nowrap px-3 py-3 text-slate-400">{formatDate(row.timestamp)}</td>
+                        <td class="whitespace-nowrap px-3 py-3 text-slate-400">{formatDate(row.timestamp, row.dateOnly)}</td>
                         <td class="whitespace-nowrap px-3 py-3 font-semibold text-slate-200">{categoryLabel(row.category)}</td>
                         <td class="max-w-[28rem] whitespace-normal px-3 py-3 text-slate-300">
                           <p class="break-words">{row.description}</p>
