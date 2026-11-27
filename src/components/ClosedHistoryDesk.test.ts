@@ -239,6 +239,9 @@ describe('Trades cache-first rendering', () => {
     expect(mountEffect).not.toContain("dispatchBrokerExecutionHistory({ type: 'refresh' });");
     expect(explicitRefresh).toContain("dispatchBrokerExecutionHistory({ type: 'refresh', requestId });");
     expect(explicitRefresh).toContain("emitBrokerEvent('broker:request-executed-trades-and-wait'");
+    expect(explicitRefresh).toContain('if (showCashActivity && cashflowHistoryReady)');
+    expect(explicitRefresh).toContain("requestClosedHistorySync('refresh', true)");
+    expect(explicitRefresh).toContain('setCashflowSyncReady(false)');
     expect(source).toContain("dispatchBrokerExecutionHistory({ type: 'failure' });");
     expect(source).toContain("brokerExecutionHistory.status === 'refreshing'");
     expect(source).toContain("brokerExecutionHistory.status === 'stale'");
@@ -249,7 +252,7 @@ describe('Trades cache-first rendering', () => {
     const app = readRuntimeSource();
     expect(source).toContain('...savedFeeRows, ...stored, ...brokerTrades');
     expect(app).toContain('hasFreedomCashflowHistoryBaseline(accountId)');
-    expect(app).toContain('const latestCashflowDate = hasCashflowBaseline');
+    expect(app).toContain('const latestCashflowDate = hasCashflowBaseline && !forceRefresh');
     expect(app).toContain('shouldFetchCashflows');
     expect(app).toContain('markFreedomCashflowHistoryBaseline(accountId)');
     expect(app).toContain('markFreedomCashflowTradeCheckpoint(accountId, latestTradeCheckpoint)');
