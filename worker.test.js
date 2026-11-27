@@ -3424,54 +3424,127 @@ describe('Freedom cashflows Worker action', () => {
     vi.unstubAllGlobals();
   });
 
-  it('calls the documented getUserCashFlows command and returns cashflows as JSON with CORS headers', async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ cashflows: [] }), {
+  const env = () => ({
+    GATEWAY_SECRET: 'test-secret',
+    ALLOWED_ORIGINS: 'https://app.test',
+    FREEDOM_PUBLIC_KEY: 'public-test-key',
+    FREEDOM_PRIVATE_KEY: 'private-test-key'
+  });
+
+  it('requests an explicit first page and returns an empty complete history', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ total: 0, cashflow: [] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     }));
     vi.stubGlobal('fetch', fetchMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', {
       headers: { 'X-App-Auth': 'test-secret', Origin: 'https://app.test' }
-    }), {
-      GATEWAY_SECRET: 'test-secret',
-      ALLOWED_ORIGINS: 'https://app.test',
-      FREEDOM_PUBLIC_KEY: 'public-test-key',
-      FREEDOM_PRIVATE_KEY: 'private-test-key'
-    });
+    }), env());
+
     expect(response.status).toBe(200);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://app.test');
     expect(await response.json()).toMatchObject({
       ok: true,
       provider: 'Freedom TradeNet',
-      data: { cashflows: [] }
+      data: { total: 0, cashflow: [] }
     });
-
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [upstreamUrl, upstreamInit] = fetchMock.mock.calls[0];
     expect(upstreamUrl).toBe('https://tradernet.com/api/getUserCashFlows');
     expect(upstreamInit.method).toBe('POST');
-    expect(JSON.parse(upstreamInit.body)).toEqual({});
+    expect(JSON.parse(upstreamInit.body)).toEqual({
+      page: { take: 1_000, skip: 0 },
+      sort: { field: 'datetime', dir: 'ASC' }
+    });
   });
 
-  it('filters cashflows inclusively from a validated start date', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ cashflow: [] }), {
+  it('retrieves every page when TradeNet history exceeds its 1,000-row default', async () => {
+    const total = 2_050;
+    const fetchMock = vi.fn(async (_url, init) => {
+      const { page } = JSON.parse(init.body);
+      const count = Math.min(page.take, total - page.skip);
+      const cashflow = Array.from({ length: count }, (_, index) => ({
+        id: String(page.skip + index + 1),
+        datetime: '2026-11-01 10:00:00',
+        sum: '-1.25',
+        currency: 'USD'
+      }));
+      return new Response(JSON.stringify({ total, cashflow }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), env());
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.total).toBe(total);
+    expect(payload.data.cashflow).toHaveLength(total);
+    expect(payload.data.cashflow[0].id).toBe('1');
+    expect(payload.data.cashflow.at(-1).id).toBe(String(total));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body))).toEqual([
+      { page: { take: 1_000, skip: 0 }, sort: { field: 'datetime', dir: 'ASC' } },
+      { page: { take: 1_000, skip: 1_000 }, sort: { field: 'datetime', dir: 'ASC' } },
+      { page: { take: 1_000, skip: 2_000 }, sort: { field: 'datetime', dir: 'ASC' } }
+    ]);
+  });
+
+  it('applies an inclusive incremental date filter on every paginated request', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ total: 0, cashflow: [] }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     }));
     vi.stubGlobal('fetch', fetchMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows&fromDate=2026-10-29', {
       headers: { 'X-App-Auth': 'test-secret' }
-    }), {
-      GATEWAY_SECRET: 'test-secret',
-      FREEDOM_PUBLIC_KEY: 'public-test-key',
-      FREEDOM_PRIVATE_KEY: 'private-test-key'
-    });
+    }), env());
+
     expect(response.status).toBe(200);
     const [, upstreamInit] = fetchMock.mock.calls[0];
     expect(JSON.parse(upstreamInit.body)).toEqual({
-      filters: [{ field: 'date', operator: 'eqormore', value: '2026-10-29' }],
-      sort: { field: 'date', dir: 'ASC' }
+      page: { take: 1_000, skip: 0 },
+      sort: { field: 'datetime', dir: 'ASC' },
+      filters: [{ field: 'date', operator: 'eqormore', value: '2026-10-29' }]
     });
+  });
+
+  it('fails closed when pagination totals change or an intermediate page is incomplete', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        total: 1_001,
+        cashflow: Array.from({ length: 1_000 }, (_, index) => ({ id: String(index + 1) }))
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        total: 1_002,
+        cashflow: [{ id: '1001' }]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), env());
+
+    expect(response.status).toBe(502);
+    expect((await response.json()).error).toMatch(/total changed during pagination/i);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects histories beyond the safe retrieval cap without returning a partial list', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ total: 50_001, cashflow: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows', {
+      headers: { 'X-App-Auth': 'test-secret' }
+    }), env());
+
+    expect(response.status).toBe(502);
+    expect((await response.json()).error).toMatch(/safe retrieval limit/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('rejects malformed incremental cashflow dates before calling TradeNet', async () => {
@@ -3479,7 +3552,7 @@ describe('Freedom cashflows Worker action', () => {
     vi.stubGlobal('fetch', fetchMock);
     const response = await worker.fetch(new Request('https://worker.test/?action=freedom-cashflows&fromDate=2026-02-30', {
       headers: { 'X-App-Auth': 'test-secret' }
-    }), { GATEWAY_SECRET: 'test-secret', FREEDOM_PUBLIC_KEY: 'public-key', FREEDOM_PRIVATE_KEY: 'private-key' });
+    }), env());
     expect(response.status).toBe(400);
     expect(fetchMock).not.toHaveBeenCalled();
   });

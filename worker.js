@@ -162,6 +162,72 @@ function isValidDateOnly(value) {
     return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+const TRADE_NET_CASHFLOW_PAGE_SIZE = 1_000;
+const MAX_TRADE_NET_CASHFLOW_ROWS = 50_000;
+
+/**
+ * Read every TradeNet cashflow page before returning history to the client.
+ * The API defaults to 1,000 rows; treating its first page as a full snapshot
+ * silently truncates long account histories.
+ */
+async function fetchAllTradeNetCashflows(env, fromDate) {
+    const cashflowRows = [];
+    let firstPage;
+    let expectedTotal = null;
+    let skip = 0;
+
+    while (expectedTotal === null || skip < expectedTotal) {
+        const params = {
+            page: { take: TRADE_NET_CASHFLOW_PAGE_SIZE, skip },
+            // Ascending order keeps newly posted latest-dated rows at the end
+            // while pagination is in progress, reducing offset movement.
+            sort: { field: "datetime", dir: "ASC" },
+            ...(fromDate ? {
+                filters: [{ field: "date", operator: "eqormore", value: fromDate }]
+            } : {})
+        };
+        const page = await requestTradeNet(env, "getUserCashFlows", params);
+        if (!page || typeof page !== "object" || Array.isArray(page)) {
+            throw new Error("TradeNet returned an invalid cashflow page. Existing history was left unchanged.");
+        }
+
+        const pageRows = Array.isArray(page.cashflow)
+            ? page.cashflow
+            : Array.isArray(page.cashflows) ? page.cashflows : null;
+        if (!Number.isSafeInteger(page.total) || page.total < 0 || !pageRows) {
+            throw new Error("TradeNet cashflow pagination metadata is missing or invalid. Existing history was left unchanged.");
+        }
+
+        if (expectedTotal === null) {
+            expectedTotal = page.total;
+            firstPage = page;
+            if (expectedTotal > MAX_TRADE_NET_CASHFLOW_ROWS) {
+                throw new Error("TradeNet cashflow history exceeds the safe retrieval limit. Existing history was left unchanged.");
+            }
+        } else if (page.total !== expectedTotal) {
+            throw new Error("TradeNet cashflow total changed during pagination. Existing history was left unchanged; retry the refresh.");
+        }
+
+        if (pageRows.length > TRADE_NET_CASHFLOW_PAGE_SIZE ||
+            pageRows.length > expectedTotal - cashflowRows.length) {
+            throw new Error("TradeNet returned an inconsistent cashflow page size. Existing history was left unchanged.");
+        }
+        if (pageRows.length === 0 && cashflowRows.length < expectedTotal) {
+            throw new Error("TradeNet returned an empty cashflow page before history was complete. Existing history was left unchanged.");
+        }
+
+        cashflowRows.push(...pageRows);
+        if (cashflowRows.length === expectedTotal) break;
+        if (pageRows.length !== TRADE_NET_CASHFLOW_PAGE_SIZE) {
+            throw new Error("TradeNet returned fewer cashflows than its total count. Existing history was left unchanged.");
+        }
+        skip += pageRows.length;
+    }
+
+    const collectionKey = firstPage && Array.isArray(firstPage.cashflow) ? "cashflow" : "cashflows";
+    return { ...firstPage, [collectionKey]: cashflowRows, total: cashflowRows.length };
+}
+
 function formatTradeNetHistoryDate(timestamp) {
     const date = new Date(timestamp);
     if (!Number.isFinite(date.getTime())) {
@@ -2409,18 +2475,22 @@ export default {
                 if (fromDate !== null && !isValidDateOnly(fromDate)) {
                     return jsonError("Cashflow start date must use YYYY-MM-DD.", 400, corsHeaders);
                 }
-                // TradeNet's getUserCashFlows accepts a server-side date filter;
-                // eqormore includes every cashflow on the start date.
-                const params = fromDate ? {
-                    filters: [{ field: "date", operator: "eqormore", value: fromDate }],
-                    sort: { field: "date", dir: "ASC" }
-                } : {};
-                const data = await requestTradeNet(env, "getUserCashFlows", params);
-                return new Response(JSON.stringify({
-                    ok: true,
-                    provider: "Freedom TradeNet",
-                    data
-                }), { headers: corsHeaders });
+                // TradeNet's getUserCashFlows is paginated (1,000 rows by
+                // default). Do not expose a partial first page as complete history.
+                try {
+                    const data = await fetchAllTradeNetCashflows(env, fromDate || undefined);
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        provider: "Freedom TradeNet",
+                        data
+                    }), { headers: corsHeaders });
+                } catch (error) {
+                    return jsonError(
+                        error instanceof Error ? error.message : "TradeNet cashflow history is incomplete.",
+                        502,
+                        corsHeaders
+                    );
+                }
             }
 
             // --- ACTION 0: Durable Object cloud portfolio state ---
