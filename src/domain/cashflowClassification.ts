@@ -129,6 +129,9 @@ export function classifyCashflow(input: CashflowClassificationInput): CashflowCl
     .map(normalizeText)
     .some(label =>
       ['block', 'unblock', 'block commission', 'unblock commission'].includes(label) ||
+      /^debiting funds under order #?\d+$/.test(label) ||
+      /^crediting funds under order #?\d+$/.test(label) ||
+      /^funds (?:blocked|unblocked) under order #?\d+$/.test(label) ||
       /^(?:block|unblock)\b.{0,120}\b(order|funds)\b/.test(label)
     );
   if (hasExplicitReservationLabel)
