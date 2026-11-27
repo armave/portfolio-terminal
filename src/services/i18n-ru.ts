@@ -102,6 +102,8 @@ export const RU_TRANSLATIONS: Record<string, string> = {
   'Order reservation': 'Резервирование средств по заявке',
   'Reservation only · no settled cash impact': 'Только резервирование · без движения по денежному балансу',
   'order reservations / releases': 'резервирований / снятий резерва по заявкам',
+  'Net cash result · USD': 'Чистый денежный результат · USD',
+  'Verified inflows less outflows across the current filters · not realized trading P&L': 'Подтверждённые поступления за вычетом списаний по текущим фильтрам · не реализованная прибыль/убыток по сделкам',
   'Unclassified · provider ID': 'Не классифицировано · ID брокера',
   'Unclassified · provisional ID': 'Не классифицировано · предварительный ID',
   'Broker-reported amount': 'Сумма по данным брокера',

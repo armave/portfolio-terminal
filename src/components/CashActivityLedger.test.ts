@@ -64,9 +64,10 @@ describe('Cash Activity read-only ledger', () => {
     const source = readSource();
     expect(source).toContain("translateText('Current available USD cash'");
     expect(source).toContain("translateText('Current margin debt'");
-    expect(source).toContain("translateText('Filtered verified inflows · USD'");
-    expect(source).toContain("translateText('Filtered verified outflows · USD'");
-    expect(source).toContain("translateText('Filtered verified net USD movement'");
+    expect(source).toContain("translateText('Net cash result · USD'");
+    expect(source).toContain("translateText('Verified inflows less outflows across the current filters · not realized trading P&L'");
+    expect(source).not.toContain("translateText('Filtered verified inflows · USD'");
+    expect(source).not.toContain("translateText('Filtered verified outflows · USD'");
     expect(source).toContain('Math.max(0, -snapshot.balance)');
     expect(source).toContain("row.quality === 'verified' && row.currency === 'USD' && !row.debtOnly");
   });
@@ -96,6 +97,9 @@ describe('Cash Activity read-only ledger', () => {
   it('uses eligible verified USD rows only and shows coverage before interpreting totals', () => {
     const source = readSource();
     expect(source).toContain('const netUsdMovement = knownInflows - knownOutflows');
+    expect(source).toContain('{historyAmount(netUsdMovement, netMovementSign)}');
+    expect(source).not.toContain('{historyAmount(knownInflows');
+    expect(source).not.toContain('{historyAmount(knownOutflows');
     expect(source).toContain('hasVerifiedUsdCashActivity ? currencyAmount(value, sign) :');
     expect(source).toContain('row.amount !== null && row.timestamp !== null && row.signedCash !== null');
     expect(source).toContain("translateText('verified USD cash movements included in totals.'");

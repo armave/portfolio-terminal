@@ -325,7 +325,7 @@ export function CashActivityLedger() {
 
   return (
     <section class="space-y-4" aria-label={translateText('Cash Activity ledger', getAppLanguage())}>
-      <div class="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+      <div class="grid grid-cols-2 gap-2 md:grid-cols-3">
         <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
           <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Current available USD cash', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold tabular-nums text-slate-100">{currencyAmount(currentCash)}</p>
@@ -334,17 +334,10 @@ export function CashActivityLedger() {
           <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Current margin debt', getAppLanguage())}</p>
           <p class="mt-1 font-mono text-lg font-bold tabular-nums text-slate-100">{currencyAmount(currentDebt)}</p>
         </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Filtered verified inflows · USD', getAppLanguage())}</p>
-          <p class="mt-1 font-mono text-lg font-bold tabular-nums text-emerald-300">{historyAmount(knownInflows, knownInflows > 0 ? '+' : '')}</p>
-        </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Filtered verified outflows · USD', getAppLanguage())}</p>
-          <p class="mt-1 font-mono text-lg font-bold tabular-nums text-rose-300">{historyAmount(knownOutflows, knownOutflows > 0 ? '−' : '')}</p>
-        </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Filtered verified net USD movement', getAppLanguage())}</p>
-          <p class={'mt-1 font-mono text-lg font-bold tabular-nums ' + netMovementTone}>{historyAmount(netUsdMovement, netMovementSign)}</p>
+        <div class="col-span-2 rounded-lg border border-slate-800 bg-slate-950/50 p-3 md:col-span-1">
+          <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{translateText('Net cash result · USD', getAppLanguage())}</p>
+          <p class={'mt-1 font-mono text-xl font-bold tabular-nums ' + netMovementTone}>{historyAmount(netUsdMovement, netMovementSign)}</p>
+          <p class="mt-1 text-[10px] text-slate-500">{translateText('Verified inflows less outflows across the current filters · not realized trading P&L', getAppLanguage())}</p>
         </div>
       </div>
 
