@@ -654,13 +654,17 @@ describe('broker history audit events', () => {
       { id: 'withdraw-1', date: '2026-11-05', type: 'Withdrawal', amount: -20, currency: 'USD' },
       { id: 'withdraw-positive-magnitude', date: '2026-11-05', type: 'Withdrawal', amount: 20, currency: 'USD' },
       { id: 'transfer-1', date: '2026-11-05', type: 'Transfer', amount: -5, currency: 'USD' },
-      { id: 'split-1', date: '2026-11-05', type: 'Stock Split', amount: 0, currency: 'USD' }
+      { id: 'split-1', date: '2026-11-05', type: 'Stock Split', amount: 0, currency: 'USD' },
+      { id: 'trade-settlement-1', date: '2026-11-05', type: 'Last', amount: -2820, currency: 'USD', raw: { type_code: 'trade', type_code_name: 'Last', sum: '-2820' } },
+      { id: 'order-block-1', date: '2026-11-05', type: 'Block', description: 'Debiting funds under order 73781598', amount: -1500, currency: 'USD', raw: { type_code: 'block' } },
+      { id: 'order-unblock-1', date: '2026-11-05', type: 'Unblock', description: 'Debiting funds under order 73781598', amount: 1500, currency: 'USD', raw: { type_code: 'unblock' } },
+      { id: 'dividend-plural-1', date: '2026-11-05', type: '90941732', description: 'Dividends on security (LLY.US)', amount: 10.5, currency: 'USD' }
     ];
     const events = appendBrokerHistoryAuditEvents([], [], cashflows, Date.parse('2026-11-06T09:00:00Z'));
     expect(events.map((event) => event.type)).toEqual([
       'dividend', 'fee', 'fee', 'margin.interest', 'margin.interest',
       'cash.deposit', 'cash.deposit', 'cash.withdrawal', 'cash.withdrawal',
-      'cash.transfer', 'corporate-action'
+      'cash.transfer', 'corporate-action', 'dividend'
     ]);
     expect(events.find(event => event.externalReferenceId === 'fee-positive-magnitude')?.externalCashFlowAmount).toBe(-2);
     expect(events.find(event => event.externalReferenceId === 'margin-positive-magnitude')?.externalCashFlowAmount).toBe(-3);
@@ -672,6 +676,10 @@ describe('broker history audit events', () => {
     expect(events.some(event => event.externalReferenceId === 'margin-adjustment-unknown')).toBe(false);
     expect(events.some(event => event.externalReferenceId === 'margin-call-unknown')).toBe(false);
     expect(events.some(event => event.externalReferenceId === 'margin-charge-unknown')).toBe(false);
+    // Trade settlements and order reservations remain in the broker cashflow
+    // history only; they are not journal income/cost events or balance postings.
+    expect(events.some(event => ['trade-settlement-1', 'order-block-1', 'order-unblock-1'].includes(event.externalReferenceId || ''))).toBe(false);
+    expect(events.find(event => event.externalReferenceId === 'dividend-plural-1')?.type).toBe('dividend');
     expect(events.find(event => event.externalReferenceId === 'split-1')?.type).toBe('corporate-action');
     expect(events.every((event) => event.cashDelta === undefined && event.marginDebtDelta === undefined)).toBe(true);
 

@@ -134,7 +134,7 @@ export function isPortfolioTransactionEvent(value: unknown): value is PortfolioT
   if (typeof value.id !== 'string' || !value.id.trim()) return false;
   if (value.schemaVersion !== PORTFOLIO_TRANSACTION_EVENT_SCHEMA_VERSION) return false;
   if (typeof value.type !== 'string' || !EVENT_TYPES.has(value.type as PortfolioTransactionEventType)) return false;
-  const cashflowCategories = new Set<CashflowCategory>(['deposit','withdrawal','dividend','interest_income','commission','fee','tax','margin_interest','transfer','adjustment','correction','corporate_action','unclassified']);
+  const cashflowCategories = new Set<CashflowCategory>(['deposit','withdrawal','dividend','interest_income','commission','fee','tax','margin_interest','trade','order_reservation','transfer','adjustment','correction','corporate_action','unclassified']);
   if (value.cashflowCategory !== undefined && (typeof value.cashflowCategory !== 'string' || !cashflowCategories.has(value.cashflowCategory as CashflowCategory))) return false;
   if (!isPlainRecord(value.actor) ||
     typeof value.actor.type !== 'string' ||

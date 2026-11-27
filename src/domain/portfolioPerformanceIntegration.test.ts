@@ -433,6 +433,43 @@ describe('buildPortfolioPerformanceReport', () => {
     expect(report.warnings.some(warning => warning.includes('not verified Freedom broker-history records'))).toBe(true);
   });
 
+  it('does not treat trade settlements or order reservations as income/cost adjustments', () => {
+    const timestamp = BASE + DAY / 2;
+    const report = buildPortfolioPerformanceReport({
+      performanceValuations: [snapshot(BASE, 1000, true), snapshot(BASE + DAY, 1000, true)],
+      transactionEvents: [],
+      cashflows: [{
+        id: 'freedom-trade-712663259', date: new Date(timestamp).toISOString(),
+        type: 'Last', amount: -2820, currency: 'USD',
+        description: 'Sell 3 META.US (trade #712663259)',
+        raw: { type_code: 'trade', type_code_name: 'Last', sum: '-2820', tradeId: '712663259' }
+      }, {
+        id: 'freedom-block-122789779', date: new Date(timestamp).toISOString(),
+        type: 'Block', amount: -1500, currency: 'USD',
+        description: 'Debiting funds under order 73781598',
+        raw: { type_code: 'block', type_code_name: 'Block', sum: '-1500' }
+      }, {
+        id: 'freedom-unblock-122789780', date: new Date(timestamp).toISOString(),
+        type: 'Unblock', amount: 1500, currency: 'USD',
+        description: 'Debiting funds under order 73781598',
+        raw: { type_code: 'unblock', type_code_name: 'Unblock', sum: '1500' }
+      }]
+    } as unknown as Pick<PortfolioState, 'performanceValuations' | 'transactionEvents' | 'cashflows'>);
+
+    expect(report.status).toBe('available');
+    expect(report.timeWeighted?.status).toBe('available');
+    if (report.incomeCosts && report.incomeCosts.status !== 'unavailable') {
+      expect(report.incomeCosts.value).toMatchObject({
+        dividends: 0, interestIncome: 0, fees: 0, commissions: 0, interest: 0, netIncomeAndCosts: 0
+      });
+    } else {
+      throw new Error('Income/cost summary should remain available with no qualifying income/cost rows.');
+    }
+    if (report.timeWeighted && report.timeWeighted.status !== 'unavailable') {
+      expect(report.timeWeighted.value.totalReturn).toBeCloseTo(0, 12);
+    }
+  });
+
   it('does not produce performance without verified cashflow history coverage', () => {
     const report = buildPortfolioPerformanceReport({
       performanceValuations: [snapshot(BASE, 1000, false), snapshot(BASE + DAY, 1100, false)],
