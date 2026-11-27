@@ -50,9 +50,29 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain("translateText('Current margin debt'");
     expect(source).toContain("translateText('Filtered verified inflows · USD'");
     expect(source).toContain("translateText('Filtered verified outflows · USD'");
-    expect(source).toContain("translateText('Filtered net USD movement'");
+    expect(source).toContain("translateText('Filtered verified net USD movement'");
     expect(source).toContain('Math.max(0, -snapshot.balance)');
     expect(source).toContain("row.quality === 'verified' && row.currency === 'USD' && !row.debtOnly");
+  });
+
+  it('uses the shared broker date parser and preserves date-only display precision', () => {
+    const source = readSource();
+    expect(source).toContain('parseFreedomCashflowDate(row.date)');
+    expect(source).toContain('dateOnly: parsedDate?.dateOnly ?? false');
+    expect(source).toContain('formatDate(row.timestamp, row.dateOnly)');
+    expect(source).toContain("timeZone: 'UTC'");
+    expect(source).toContain('const periodStartDate = startAt === null ? null : new Date(startAt)');
+    expect(source).toContain('row.dateOnly && periodStartDate');
+  });
+
+  it('uses eligible verified USD rows only and shows coverage before interpreting totals', () => {
+    const source = readSource();
+    expect(source).toContain('const netUsdMovement = knownInflows - knownOutflows');
+    expect(source).toContain('hasVerifiedUsdCashActivity ? currencyAmount(value, sign) :');
+    expect(source).toContain('row.amount !== null && row.timestamp !== null && row.signedCash !== null');
+    expect(source).toContain("translateText('verified USD cash movements included in totals.'");
+    expect(source).toContain("translateText('records are excluded from verified USD totals");
+    expect(source).toContain("translateText('Margin interest recorded separately'");
   });
 
   it('retains historical manual rows as provisional and excludes them from verified summaries', () => {
