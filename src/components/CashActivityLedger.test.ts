@@ -6,19 +6,22 @@ function readSource(): string {
 }
 
 describe('Cash Activity read-only ledger', () => {
-  it('renders normalized source records in the shared responsive and paginated table pattern', () => {
+  it('uses stacked mobile cards and retains the desktop semantic table and pagination', () => {
     const source = readSource();
 
     expect(source).toContain("useTablePagination('cash-activity', filteredRows.length, 10)");
     expect(source).toContain('sliceTablePage(filteredRows, pagination.currentPage, pagination.pageSize)');
+    expect(source).toContain('<div class="mt-3 space-y-2 sm:hidden">');
+    expect(source).toContain('<article key={row.id}');
+    expect(source).toContain('<details class="mt-1 text-[11px] text-slate-500">');
+    expect(source).toContain('<div class="hidden sm:block">');
     expect(source).toContain('<TableScrollRegion');
-    expect(source).toContain('<table class="min-w-[56rem] w-full border-collapse text-left text-xs">');
+    expect(source).toContain('<table class="min-w-[68rem] w-full border-collapse text-left text-xs">');
     expect(source).toContain('<thead');
     expect(source).toContain('<tbody id="cashActivityTable"');
     expect(source).toContain('visibleRows.map(row => {');
     expect(source).toContain('<tr key={row.id}');
     expect(source).toContain('<TablePagination');
-    expect(source).not.toContain('<article key={row.id}');
   });
 
   it('does not expose a manual cash posting form or store mutation', () => {
@@ -63,6 +66,18 @@ describe('Cash Activity read-only ledger', () => {
     expect(source).toContain("timeZone: 'UTC'");
     expect(source).toContain('const periodStartDate = startAt === null ? null : new Date(startAt)');
     expect(source).toContain('row.dateOnly && periodStartDate');
+  });
+
+  it('shows signed broker-reported amounts without inventing classified cash impact', () => {
+    const source = readSource();
+    expect(source).toContain('reportedAmount: amount');
+    expect(source).toContain('hasProviderSignedSum\n        ? amount');
+    expect(source).toContain("translateText('Broker-reported amount'");
+    expect(source).toContain("row.quality === 'unclassified'");
+    expect(source).toContain("row.identityQuality === 'provider'");
+    expect(source).toContain("translateText('Data quality details:'");
+    expect(source).toContain("translateText('unclassified operations'");
+    expect(source).toContain("translateText('provisional identities'");
   });
 
   it('uses eligible verified USD rows only and shows coverage before interpreting totals', () => {

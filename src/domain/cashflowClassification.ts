@@ -4,6 +4,8 @@ export interface CashflowClassificationInput {
   type?: unknown;
   description?: unknown;
   category?: unknown;
+  typeCode?: unknown;
+  typeCodeName?: unknown;
   raw?: Record<string, unknown> | Record<string, string>;
 }
 
@@ -13,14 +15,69 @@ export interface CashflowClassification {
   classified: boolean;
 }
 
+function normalizeText(value: unknown): string {
+  return (typeof value === 'string' || typeof value === 'number' ? String(value) : '')
+    .toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function sourceText(input: CashflowClassificationInput): string {
-  return [input.type, input.description, input.category, ...Object.values(input.raw || {})]
-    .filter((value): value is string | number => typeof value === 'string' || typeof value === 'number')
-    .join(' ').toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const raw = input.raw || {};
+  // Only use the provider's explicit transaction label. Unrelated raw fields
+  // (balance snapshots, account metadata, rate notes) must not override it.
+  return [
+    input.type,
+    input.description,
+    input.category,
+    input.typeCodeName,
+    raw.type_code_name,
+    raw.typeCodeName
+  ].map(normalizeText).filter(Boolean).join(' ');
+}
+
+function providerCodeClassification(input: CashflowClassificationInput): CashflowClassification | null {
+  const raw = input.raw || {};
+  const code = normalizeText(input.typeCode ?? raw.type_code ?? raw.typeCode).replace(/\s+/g, '_');
+  if (!code) return null;
+
+  if (
+    code.startsWith('commission_') ||
+    ['commission', 'icc_commission', 'card_commission', 'agent_fee', 'agent_fee_reverted',
+      'agent_fee_annual', 'agent_fee_annual_reverted', 'commission_rebates', 'commission_refund',
+      'recurrent_subscription'].includes(code)
+  ) return { category: 'commission', eventType: 'fee', classified: true };
+
+  if (code.startsWith('tax_') || code === 'tax')
+    return { category: 'tax', eventType: 'fee', classified: true };
+
+  if (code === 'percents')
+    return { category: 'interest_income', eventType: 'interest.income', classified: true };
+
+  if (['dividend', 'dividend_compensation'].includes(code))
+    return { category: 'dividend', eventType: 'dividend', classified: true };
+
+  if (code === 'coupon')
+    return { category: 'interest_income', eventType: 'interest.income', classified: true };
+
+  if (['storn_correction', 'conversion_reverted', 'merger_reverted', 'spin_off_reverted',
+    'split_reverted', 'dividend_reverted', 'coupon_reverted', 'tax_reverted', 'tax_vat_refund'].includes(code))
+    return { category: 'correction', eventType: 'cash.adjustment', classified: true };
+
+  if (['merger', 'spin_off', 'split', 'rights_distribution', 'corporate_action_compensation',
+    'corporate_action_compensation_reverted', 'stock_dividend', 'stock_dividend_compensation',
+    'stock_dividend_compensation_reverted'].includes(code))
+    return { category: 'corporate_action', eventType: 'corporate-action', classified: true };
+
+  if (['intercompany', 'internal_holding'].includes(code))
+    return { category: 'transfer', eventType: 'cash.transfer', classified: true };
+
+  return null;
 }
 
 /** Shared fail-closed classifier for broker import, reconciliation and reporting. */
 export function classifyCashflow(input: CashflowClassificationInput): CashflowClassification {
+  const providerClassification = providerCodeClassification(input);
+  if (providerClassification) return providerClassification;
+
   const value = sourceText(input);
   const has = (pattern: RegExp) => pattern.test(value);
   if (!value) return { category: 'unclassified', eventType: null, classified: false };
@@ -45,6 +102,13 @@ export function classifyCashflow(input: CashflowClassificationInput): CashflowCl
     return { category: 'transfer', eventType: 'cash.transfer', classified: true };
   if (has(/\b(interest income|interest received|interest credited|credited interest|credit interest|bank interest)\b/))
     return { category: 'interest_income', eventType: 'interest.income', classified: true };
+  // TradeNet describes negative-cash-balance charges as fees/commissions,
+  // not as financing interest. Keep them distinct from margin-interest rows.
+  if (has(/\b(fee|commission|charge)\b.{0,80}\bnegative cash balance\b|\bnegative cash balance\b.{0,80}\b(fee|commission|charge)\b/)) {
+    return has(/\bcommission\b/)
+      ? { category: 'commission', eventType: 'fee', classified: true }
+      : { category: 'fee', eventType: 'fee', classified: true };
+  }
   if (has(/\b(margin interest|margin fee|financing|borrow fee)\b/))
     return { category: 'margin_interest', eventType: 'margin.interest', classified: true };
   if (has(/\bmargin\b/))
@@ -71,7 +135,9 @@ export function normalizeClassifiedCashflowAmount(category: CashflowCategory, am
   if (!Number.isFinite(amount)) return amount;
   if (category === 'deposit' || category === 'dividend' || category === 'interest_income') return Math.abs(amount);
   if (category === 'withdrawal') return -Math.abs(amount);
-  if (category === 'fee' || category === 'commission' || category === 'tax' || category === 'margin_interest')
-    return /\b(refund|rebate|reimbursement)\b/i.test(description) ? Math.abs(amount) : -Math.abs(amount);
+  if (category === 'fee' || category === 'commission' || category === 'tax' || category === 'margin_interest') {
+    const normalizedDescription = description.toLowerCase().replace(/[_-]+/g, ' ');
+    return /\b(refund|rebate|reimbursement)\b/.test(normalizedDescription) ? Math.abs(amount) : -Math.abs(amount);
+  }
   return amount;
 }
