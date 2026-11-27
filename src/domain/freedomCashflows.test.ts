@@ -107,6 +107,59 @@ describe("Freedom cashflow normalization", () => {
     });
   });
 
+  it("preserves TradeNet trade and order-reservation provider fields for classification", () => {
+    const rows = normalizeFreedomCashflowRows({
+      total: 3,
+      cashflow: [{
+        id: "trade-712663259",
+        type_code: "trade",
+        type_code_name: "Last",
+        tradeId: 712663259,
+        date: "2026-10-29",
+        datetime: "2026-10-29 20:10:00",
+        sum: "1896.00",
+        currency: "USD",
+        comment: "Sell 3 META.US (trade #712663259)"
+      }, {
+        id: "block-122789779",
+        type_code: "block",
+        type_code_name: "Block",
+        date: "2026-09-07",
+        datetime: "2026-09-07 05:29:00",
+        sum: "-1500.00",
+        currency: "USD",
+        comment: "Debiting funds under order 73781598"
+      }, {
+        id: "unblock-122789780",
+        type_code: "unblock",
+        type_code_name: "Unblock",
+        date: "2026-09-07",
+        datetime: "2026-09-07 05:29:00",
+        sum: "1500.00",
+        currency: "USD",
+        comment: "Debiting funds under order 73781598"
+      }]
+    });
+
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({
+      id: "freedom-trade-712663259",
+      type: "Last",
+      amount: 1896,
+      raw: { type_code: "trade", type_code_name: "Last", tradeId: "712663259", sum: "1896.00" }
+    });
+    expect(rows[1]).toMatchObject({
+      type: "Block",
+      amount: -1500,
+      raw: { type_code: "block", type_code_name: "Block", sum: "-1500.00" }
+    });
+    expect(rows[2]).toMatchObject({
+      type: "Unblock",
+      amount: 1500,
+      raw: { type_code: "unblock", type_code_name: "Unblock", sum: "1500.00" }
+    });
+  });
+
   it("preserves an Excel date serial as source evidence instead of rewriting persisted date identity", () => {
     const rows = normalizeFreedomCashflowRows({
       cashflows: [{ operation_id: 46324, date: 46324, type: "Fee", amount: -1, currency: "USD" }]
