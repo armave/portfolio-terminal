@@ -57,6 +57,8 @@ describe('app localization', () => {
       'Provider ID / app record', 'Provisional source identity',
       'Unclassified source row', 'Trade settlement', 'Order reservation',
       'Reservation only · no settled cash impact', 'order reservations / releases',
+      'Net cash result · USD',
+      'Verified inflows less outflows across the current filters · not realized trading P&L',
       'Unclassified · provider ID', 'Unclassified · provisional ID',
       'Broker-reported amount', 'Show full description', 'Data quality details:',
       'unclassified operations', 'provisional identities', 'missing amounts', 'missing dates',

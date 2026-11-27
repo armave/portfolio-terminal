@@ -69,6 +69,16 @@ describe('shared cashflow classification', () => {
     expect(classifyCashflow({
       type: 'Block. Debiting funds under order 73781598'
     }).category).toBe('order_reservation');
+    for (const [type, description] of [
+      ['122878781', 'Debiting funds under order 73781598'],
+      ['121518014', 'Debiting funds under order 72855779'],
+      ['120214050', 'Debiting funds under order 72010189']
+    ]) {
+      expect(classifyCashflow({ type, description })).toMatchObject({
+        category: 'order_reservation', eventType: null, classified: true
+      });
+    }
+    expect(classifyCashflow({ type: '123', description: 'Debiting funds from account' }).classified).toBe(false);
     expect(hasKnownCashflowDirection('order_reservation')).toBe(false);
   });
 
