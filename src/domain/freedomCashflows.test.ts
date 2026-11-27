@@ -73,6 +73,40 @@ describe("Freedom cashflow normalization", () => {
     expect(isFreedomCashflowRow({ id: "cashflow-legacy-workbook-row" })).toBe(false);
   });
 
+  it("normalizes TradeNet source labels, provider codes and signed sum", () => {
+    const rows = normalizeFreedomCashflowRows({
+      total: 1,
+      cashflow: [{
+        id: "trade-net-987",
+        type_code: "commission_for_margin_refund",
+        type_code_name: "Commission refund for negative cash balance",
+        date: "2026-11-26",
+        datetime: "2026-11-26 09:30:00",
+        sum: "12.75",
+        amount: "-99.00",
+        sumRaw: "12.75",
+        currency: "USD",
+        comment: "Commission refund for negative cash balance"
+      }]
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: "freedom-trade-net-987",
+      type: "Commission refund for negative cash balance",
+      date: "2026-11-26",
+      amount: 12.75,
+      currency: "USD",
+      description: "Commission refund for negative cash balance",
+      raw: {
+        type_code: "commission_for_margin_refund",
+        type_code_name: "Commission refund for negative cash balance",
+        sum: "12.75",
+        sumRaw: "12.75",
+        amount: "-99.00"
+      }
+    });
+  });
+
   it("preserves an Excel date serial as source evidence instead of rewriting persisted date identity", () => {
     const rows = normalizeFreedomCashflowRows({
       cashflows: [{ operation_id: 46324, date: 46324, type: "Fee", amount: -1, currency: "USD" }]
@@ -98,12 +132,18 @@ describe("Freedom cashflow normalization", () => {
     expect(normalizeFreedomCashflowRows({ data: { cashflows: [] } })).toEqual([]);
   });
 
-  it("fails closed for unknown envelopes or rows missing usable dates and amounts", () => {
+  it("fails closed for unknown envelopes or any malformed row instead of dropping it", () => {
     expect(() => normalizeFreedomCashflowRows({ data: { account: [] } }))
       .toThrow(/unrecognized cashflow response/i);
     expect(() => normalizeFreedomCashflowRows({
       cashflows: [{ id: 1, date: "not-a-date", description: "fee" }]
-    })).toThrow(/without usable dates and amounts/i);
+    })).toThrow(/without usable dates or amounts/i);
+    expect(() => normalizeFreedomCashflowRows({
+      cashflows: [
+        { id: 1, date: "2026-10-30", amount: -2, currency: "USD" },
+        { id: 2, date: "2026-10-31", description: "missing amount", currency: "USD" }
+      ]
+    })).toThrow(/1 of 2 cashflow rows/);
   });
 
   it("derives signed amounts from separate debit and credit fields", () => {

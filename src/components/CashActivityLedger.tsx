@@ -24,9 +24,12 @@ interface CashActivityRow {
   category: CashflowCategory;
   description: string;
   amount: number | null;
+  reportedAmount?: number | null;
   currency?: string;
   signedCash: number | null;
   signedDebt?: number | null;
+  providerReference?: string;
+  identityQuality?: 'provider' | 'fallback' | 'app';
   source: 'TradeNet' | 'App';
   quality: 'verified' | 'provisional' | 'unclassified';
   debtOnly?: boolean;
@@ -102,37 +105,73 @@ function formatDate(timestamp: number | null, dateOnly = false): string {
   return new Intl.DateTimeFormat(locale, options).format(timestamp);
 }
 
+function signedAmountText(amount: number | null | undefined, currency?: string): string {
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) return '—';
+  const prefix = amount > 0 ? '+' : amount < 0 ? '−' : '';
+  return prefix + formatMoney(amount, currency);
+}
+
+function cashImpact(row: CashActivityRow): number | null {
+  return row.debtOnly
+    ? (row.signedDebt === null || row.signedDebt === undefined ? null : -row.signedDebt)
+    : row.signedCash;
+}
+
+function qualityLabel(row: CashActivityRow): string {
+  if (row.legacyManual) return 'Historical manual entry · unverified';
+  if (row.quality === 'verified') return 'Provider ID / app record';
+  if (row.quality === 'provisional') return 'Provisional source identity';
+  return row.identityQuality === 'provider'
+    ? 'Unclassified · provider ID'
+    : 'Unclassified · provisional ID';
+}
+
 function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
   const rows: CashActivityRow[] = [];
   for (const row of snapshot.cashflows || []) {
+    const raw = row.raw || {};
     const classification = classifyCashflow({
-      type: row.type, description: row.description, raw: row.raw || {}
+      type: row.type,
+      description: row.description,
+      typeCode: raw.type_code,
+      typeCodeName: raw.type_code_name,
+      raw
     });
     const amount = typeof row.amount === 'number' && Number.isFinite(row.amount) ? row.amount : null;
     const description = [row.type, row.description].filter(Boolean).join(' — ');
-    const classificationText = [row.type, row.description, ...Object.values(row.raw || {})].filter(Boolean).join(' ');
+    const classificationText = [row.type, row.description, raw.type_code, raw.type_code_name]
+      .filter(Boolean).join(' ');
     const rowCurrency = typeof row.currency === 'string' && /^[A-Z]{3}$/i.test(row.currency.trim())
       ? row.currency.trim().toUpperCase()
       : undefined;
     const parsedDate = parseFreedomCashflowDate(row.date);
     const rowTimestamp = parsedDate?.timestamp ?? null;
+    const hasProviderSignedSum = typeof raw.sum === 'string' && raw.sum.trim() !== '';
+    const fallbackIdentity = row.identityQuality === 'fallback' || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id);
+    const providerReference = !fallbackIdentity && row.id.startsWith('freedom-')
+      ? row.id.slice('freedom-'.length)
+      : undefined;
+    const signedCash = amount === null || !classification.classified || !hasKnownCashflowDirection(classification.category)
+      ? null
+      : hasProviderSignedSum
+        ? amount
+        : normalizeClassifiedCashflowAmount(classification.category, amount, classificationText);
     rows.push({
       id: 'broker:' + row.id,
       timestamp: rowTimestamp,
       dateOnly: parsedDate?.dateOnly ?? false,
       category: classification.category,
       description: description || translateText('Broker cashflow', getAppLanguage()),
-      amount: amount === null || !classification.classified
-        ? amount
-        : Math.abs(normalizeClassifiedCashflowAmount(classification.category, amount, classificationText)),
+      amount: amount === null ? null : Math.abs(signedCash ?? amount),
+      reportedAmount: amount,
+      providerReference,
+      identityQuality: fallbackIdentity ? 'fallback' : providerReference ? 'provider' : undefined,
       currency: rowCurrency,
-      signedCash: amount === null || !classification.classified || !hasKnownCashflowDirection(classification.category)
-        ? null
-        : normalizeClassifiedCashflowAmount(classification.category, amount, classificationText),
+      signedCash,
       source: 'TradeNet',
       quality: !classification.classified
         ? 'unclassified'
-        : !hasKnownCashflowDirection(classification.category) || row.identityQuality === 'fallback' || /^freedom-\d{4}-\d{2}-\d{2}\|/i.test(row.id) || !rowCurrency || rowTimestamp === null
+        : !hasKnownCashflowDirection(classification.category) || fallbackIdentity || !rowCurrency || rowTimestamp === null
           ? 'provisional'
           : 'verified'
     });
@@ -168,6 +207,7 @@ function buildLedgerRows(snapshot: CashActivitySnapshot): CashActivityRow[] {
       signedCash,
       signedDebt,
       source: 'App',
+      identityQuality: 'app',
       legacyManual: event.source === 'manual-cash-activity' ||
         event.source === 'manual-cash-adjustment' ||
         event.source === 'manual-margin-adjustment',
@@ -221,7 +261,7 @@ export function CashActivityLedger() {
       }
       const searchableText = [
         row.id, row.description, categoryLabel(row.category), row.currency || '',
-        row.source, row.quality, row.legacyManual ? 'historical manual entry' : ''
+        row.source, row.quality, row.providerReference || '', row.legacyManual ? 'historical manual entry' : ''
       ].join(' ').toLowerCase();
       if (query && !searchableText.includes(query)) return false;
       return true;
@@ -258,6 +298,11 @@ export function CashActivityLedger() {
     row.quality !== 'verified' || row.amount === null || !row.currency || row.timestamp === null ||
       (row.debtOnly ? row.signedDebt === null || row.signedDebt === undefined : row.signedCash === null)
   ).length;
+  const unclassifiedCount = filteredRows.filter(row => row.quality === 'unclassified').length;
+  const provisionalCount = filteredRows.filter(row => row.quality === 'provisional').length;
+  const missingAmountCount = filteredRows.filter(row => row.amount === null).length;
+  const missingDateCount = filteredRows.filter(row => row.timestamp === null).length;
+  const missingCurrencyCount = filteredRows.filter(row => !row.currency).length;
   const hasVerifiedUsdCashActivity = usdRows.length > 0;
   const netUsdMovement = knownInflows - knownOutflows;
   const netMovementTone = netUsdMovement > 0
@@ -305,6 +350,17 @@ export function CashActivityLedger() {
           <span role="status" class="text-amber-300">
             {excludedCount} {translateText('records are excluded from verified USD totals because their classification, amount, currency, date or source identity is incomplete or unverified.', getAppLanguage())}
           </span>
+        )}
+        {(unclassifiedCount > 0 || provisionalCount > 0 || missingAmountCount > 0 || missingDateCount > 0 || missingCurrencyCount > 0) && (
+          <div class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-amber-200">
+            <span>{translateText('Data quality details:', getAppLanguage())}</span>
+            {unclassifiedCount > 0 && <span>{unclassifiedCount} {translateText('unclassified operations', getAppLanguage())}</span>}
+            {provisionalCount > 0 && <span>{provisionalCount} {translateText('provisional identities', getAppLanguage())}</span>}
+            {missingAmountCount > 0 && <span>{missingAmountCount} {translateText('missing amounts', getAppLanguage())}</span>}
+            {missingDateCount > 0 && <span>{missingDateCount} {translateText('missing dates', getAppLanguage())}</span>}
+            {missingCurrencyCount > 0 && <span>{missingCurrencyCount} {translateText('missing currencies', getAppLanguage())}</span>}
+            <span>{translateText('Data-quality reason counts may overlap.', getAppLanguage())}</span>
+          </div>
         )}
         {otherCurrencyCount > 0 && (
           <span>{otherCurrencyCount} {translateText('non-USD records are excluded from USD totals.', getAppLanguage())}</span>
@@ -378,11 +434,57 @@ export function CashActivityLedger() {
           <p class="mt-3 rounded border border-slate-800 px-3 py-8 text-center text-xs text-slate-500">{translateText('No cash activity matches these filters.', getAppLanguage())}</p>
         ) : (
           <>
-            <TableScrollRegion
-              label={translateText('Cash activity records', getAppLanguage())}
-              className="mt-3"
-            >
-              <table class="min-w-[56rem] w-full border-collapse text-left text-xs">
+            <div class="mt-3 space-y-2 sm:hidden">
+              {visibleRows.map(row => {
+                const signedDisplay = cashImpact(row);
+                const amountTone = signedDisplay === null
+                  ? 'text-amber-300'
+                  : signedDisplay >= 0 ? 'text-emerald-300' : 'text-rose-300';
+                return (
+                  <article key={row.id} class="rounded-lg border border-slate-800 bg-slate-950/70 p-3">
+                    <div class="flex flex-wrap items-start justify-between gap-2">
+                      <span class="text-xs text-slate-400">{formatDate(row.timestamp, row.dateOnly)}</span>
+                      <span class="rounded bg-slate-800/80 px-2 py-1 text-[11px] font-semibold text-slate-200">{categoryLabel(row.category)}</span>
+                    </div>
+                    <p class="mt-2 break-words text-sm leading-5 text-slate-200 line-clamp-2">{row.description}</p>
+                    <details class="mt-1 text-[11px] text-slate-500">
+                      <summary class="cursor-pointer select-none py-1">{translateText('Show full description', getAppLanguage())}</summary>
+                      <p class="break-words pb-1 text-slate-300">{row.description}</p>
+                    </details>
+                    <div class="mt-2 grid grid-cols-2 gap-3 border-t border-slate-800 pt-2 text-xs">
+                      <div class="min-w-0">
+                        <p class="text-[10px] uppercase tracking-wide text-slate-500">{translateText('Source / quality', getAppLanguage())}</p>
+                        <p class="mt-1 text-slate-200">{row.source}</p>
+                        <p class="mt-0.5 break-words text-[10px] text-slate-500">{translateText(qualityLabel(row), getAppLanguage())}</p>
+                        {row.providerReference && <p class="mt-0.5 break-all font-mono text-[10px] text-slate-500">{row.providerReference}</p>}
+                      </div>
+                      <div>
+                        <p class="text-[10px] uppercase tracking-wide text-slate-500">{translateText('Currency', getAppLanguage())}</p>
+                        <p class="mt-1 text-slate-200">{row.currency || '—'}</p>
+                        {row.debtOnly && <p class="mt-0.5 text-[10px] text-slate-500">{translateText('Debt only', getAppLanguage())}</p>}
+                      </div>
+                      {row.reportedAmount !== undefined && (
+                        <div>
+                          <p class="text-[10px] uppercase tracking-wide text-slate-500">{translateText('Broker-reported amount', getAppLanguage())}</p>
+                          <p class="mt-1 font-mono font-semibold tabular-nums text-slate-100">{signedAmountText(row.reportedAmount, row.currency)}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p class="text-[10px] uppercase tracking-wide text-slate-500">{translateText('Cash / debt impact', getAppLanguage())}</p>
+                        <p class={'mt-1 font-mono font-semibold tabular-nums ' + amountTone}>{signedAmountText(signedDisplay, row.currency)}</p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
+            <div class="hidden sm:block">
+              <TableScrollRegion
+                label={translateText('Cash activity records', getAppLanguage())}
+                className="mt-3"
+              >
+                <table class="min-w-[68rem] w-full border-collapse text-left text-xs">
                 <thead class="bg-slate-900/80 text-[10px] uppercase tracking-wide text-slate-400">
                   <tr>
                     <th scope="col" class="whitespace-nowrap px-3 py-2.5 font-semibold">{translateText('Activity date', getAppLanguage())}</th>
@@ -390,25 +492,17 @@ export function CashActivityLedger() {
                     <th scope="col" class="px-3 py-2.5 font-semibold">{translateText('Description', getAppLanguage())}</th>
                     <th scope="col" class="whitespace-nowrap px-3 py-2.5 font-semibold">{translateText('Source / quality', getAppLanguage())}</th>
                     <th scope="col" class="whitespace-nowrap px-3 py-2.5 font-semibold">{translateText('Currency', getAppLanguage())}</th>
+                    <th scope="col" class="whitespace-nowrap px-3 py-2.5 text-right font-semibold">{translateText('Broker-reported amount', getAppLanguage())}</th>
                     <th scope="col" class="whitespace-nowrap px-3 py-2.5 text-right font-semibold">{translateText('Cash / debt impact', getAppLanguage())}</th>
                   </tr>
                 </thead>
                 <tbody id="cashActivityTable" class="divide-y divide-slate-800/80 bg-slate-950/40">
                   {visibleRows.map(row => {
-                    const signedDisplay = row.debtOnly
-                      ? (row.signedDebt === null || row.signedDebt === undefined ? null : -row.signedDebt)
-                      : row.signedCash;
+                    const signedDisplay = cashImpact(row);
                     const isInflow = signedDisplay !== null && signedDisplay >= 0;
                     const amountTone = signedDisplay === null
                       ? 'text-amber-300'
                       : isInflow ? 'text-emerald-300' : 'text-rose-300';
-                    const qualityLabel = row.legacyManual
-                      ? 'Historical manual entry · unverified'
-                      : row.quality === 'verified'
-                        ? 'Provider ID / app record'
-                        : row.quality === 'provisional'
-                          ? 'Provisional source identity'
-                          : 'Unclassified source row';
                     return (
                       <tr key={row.id} class="align-top transition-colors hover:bg-slate-900/40">
                         <td class="whitespace-nowrap px-3 py-3 text-slate-400">{formatDate(row.timestamp, row.dateOnly)}</td>
@@ -418,21 +512,26 @@ export function CashActivityLedger() {
                         </td>
                         <td class="whitespace-nowrap px-3 py-3">
                           <p class="text-slate-300">{row.source}</p>
-                          <p class="mt-1 text-[10px] text-slate-500">{translateText(qualityLabel, getAppLanguage())}</p>
+                          <p class="mt-1 text-[10px] text-slate-500">{translateText(qualityLabel(row), getAppLanguage())}</p>
+                          {row.providerReference && <p class="mt-1 break-all font-mono text-[10px] text-slate-500">{row.providerReference}</p>}
                         </td>
                         <td class="whitespace-nowrap px-3 py-3 text-slate-400">
                           {row.currency || '—'}
                           {row.debtOnly && <p class="mt-1 text-[10px] text-slate-500">{translateText('Debt only', getAppLanguage())}</p>}
                         </td>
+                        <td class="whitespace-nowrap px-3 py-3 text-right font-mono text-sm font-semibold tabular-nums text-slate-200">
+                          {row.reportedAmount === undefined ? '—' : signedAmountText(row.reportedAmount, row.currency)}
+                        </td>
                         <td class={'whitespace-nowrap px-3 py-3 text-right font-mono text-sm font-semibold tabular-nums ' + amountTone}>
-                          {signedDisplay === null ? '—' : (isInflow ? '+' : '−') + formatMoney(signedDisplay, row.currency)}
+                          {signedDisplay === null ? '—' : signedAmountText(signedDisplay, row.currency)}
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
-              </table>
-            </TableScrollRegion>
+                </table>
+              </TableScrollRegion>
+            </div>
             <TablePagination
               tableLabel={translateText('Cash Activity ledger', getAppLanguage())}
               page={pagination.currentPage}

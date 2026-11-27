@@ -183,15 +183,21 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
 
   const normalized: NormalizedFreedomCashflow[] = [];
   const fallbackOccurrences = new Map<string, number>();
+  let malformedRowCount = 0;
   for (const candidate of rows) {
-    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) continue;
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      malformedRowCount += 1;
+      continue;
+    }
     const row = candidate as Record<string, unknown>;
     const date = normalizeDate(pickValue(row, [
       "date", "datetime", "operation_date", "operation_datetime", "transaction_date",
       "cashflow_date", "created_at", "time", "dt", "timestamp", "booking_date", "value_date"
     ]));
+    // TradeNet sum is the signed cash movement (negative means debit).
+    // Prefer it over generic amount aliases so provider sign is preserved.
     let amount = parseAmount(pickValue(row, [
-      "amount", "sum", "value", "cashflow", "cashflow_amount", "operation_amount",
+      "sum", "amount", "value", "cashflow", "cashflow_amount", "operation_amount",
       "transaction_amount", "net_amount", "amt", "total"
     ]));
     if (amount === null) {
@@ -200,16 +206,21 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
       if (debit !== null && debit !== 0) amount = -Math.abs(debit);
       else if (credit !== null) amount = Math.abs(credit);
     }
-    if (!isUsableDate(date) || amount === null) continue;
+    if (!isUsableDate(date) || amount === null) {
+      malformedRowCount += 1;
+      continue;
+    }
 
     const idValue = pickValue(row, [
       "id", "cashflow_id", "operation_id", "transaction_id", "reference",
       "external_id", "document_id", "doc_id", "op_id", "operation_no", "operation_number"
     ]);
-    const typeValue = pickValue(row, [
+    const typeCodeValue = pickValue(row, ["type_code", "typeCode"]);
+    const typeCodeNameValue = pickValue(row, ["type_code_name", "typeCodeName"]);
+    const typeValue = typeCodeNameValue ?? pickValue(row, [
       "type", "kind", "operation_type", "transaction_type", "cashflow_type",
       "category", "direction", "operation", "name"
-    ]);
+    ]) ?? typeCodeValue;
     const descriptionValue = pickValue(row, [
       "description", "comment", "details", "purpose", "remark", "note",
       "info", "operation_description", "transaction_description"
@@ -237,6 +248,11 @@ export function normalizeFreedomCashflowRows(response: unknown): NormalizedFreed
     });
   }
 
+  if (malformedRowCount > 0) {
+    throw new Error(
+      `Freedom returned ${malformedRowCount} of ${rows.length} cashflow rows without usable dates or amounts. Existing cashflow history was left unchanged.`
+    );
+  }
   if (normalized.length === 0) {
     throw new Error("Freedom returned cashflow rows without usable dates and amounts. Existing cashflow history was left unchanged.");
   }
