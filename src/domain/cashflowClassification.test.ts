@@ -18,7 +18,30 @@ describe('shared cashflow classification', () => {
     });
   });
 
-  it('leaves ambiguous margin and reinvestment operations unclassified', () => {
+  it('uses explicit TradeNet transaction codes and labels', () => {
+    expect(classifyCashflow({
+      type: 'Commission refund for negative cash balance',
+      typeCode: 'commission_for_margin_refund',
+      typeCodeName: 'Commission refund for negative cash balance'
+    })).toMatchObject({ category: 'commission', eventType: 'fee', classified: true });
+    expect(classifyCashflow({
+      type: 'Monetary transaction',
+      description: 'Fee for negative cash balance USD',
+      raw: { type_code: 'commission', type_code_name: 'Monetary transaction', balance_note: 'Margin Debt Adjustment' }
+    })).toMatchObject({ category: 'commission', eventType: 'fee', classified: true });
+    expect(classifyCashflow({
+      type: 'Fee for negative cash balance USD',
+      description: 'Fee rate as a percentage: 0.041095',
+      raw: { balance_note: 'Margin Debt Adjustment' }
+    })).toMatchObject({ category: 'fee', eventType: 'fee', classified: true });
+  });
+
+  it('ignores unrelated raw fields and keeps genuinely ambiguous margin rows unclassified', () => {
+    expect(classifyCashflow({
+      type: 'Account adjustment',
+      description: 'Adjustment',
+      raw: { balance_note: 'Margin call fee rate', balance: '1200.00' }
+    }).category).toBe('adjustment');
     expect(classifyCashflow({ type: 'Margin Debt Adjustment' }).category).toBe('unclassified');
     expect(classifyCashflow({ type: 'Margin Call' }).classified).toBe(false);
     expect(classifyCashflow({ type: 'Dividend Reinvestment' }).classified).toBe(false);
@@ -48,6 +71,7 @@ describe('shared cashflow classification', () => {
     expect(normalizeClassifiedCashflowAmount('margin_interest', 2)).toBe(-2);
     expect(normalizeClassifiedCashflowAmount('margin_interest', 2, 'Margin interest refund')).toBe(2);
     expect(normalizeClassifiedCashflowAmount('fee', 3, 'Fee refund')).toBe(3);
+    expect(normalizeClassifiedCashflowAmount('commission', 3, 'commission_for_margin_refund')).toBe(3);
     expect(normalizeClassifiedCashflowAmount('transfer', -4)).toBe(-4);
   });
 });
