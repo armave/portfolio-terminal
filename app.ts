@@ -1665,7 +1665,11 @@ async function performAdminClosedHistorySync(mode: TradesHistorySyncMode, source
       currentAtStart.closedTrades || []
     ) || 'no-trades';
     const previousTradeCheckpoint = getFreedomCashflowTradeCheckpoint(accountId);
-    const latestCashflowDate = hasCashflowBaseline
+    // A forced history refresh intentionally omits the incremental cursor.
+    // This supports a complete cashflow backfill when an older baseline may
+    // have missed historical rows; the existing ID-based merge preserves
+    // accepted rows while adding or refreshing provider evidence.
+    const latestCashflowDate = hasCashflowBaseline && !forceRefresh
       ? getFreedomCashflowRefreshStartDate(priorCashflows) ||
       getLatestClosedTradeDate(executionsWithFees, currentAtStart.closedTrades || [])
       : undefined;
